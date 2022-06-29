@@ -33,15 +33,30 @@ async def disconnect() -> None:
 
 async def recalc_ranks() -> None:
     print("Recalculating all user ranks")
+    
+    for board in ("leaderboard", "relaxboard", "autoboard"):
+        await redis.delete(*await redis.keys(f"ripple:{board}:*"))
 
     current_time = int(time.time())
     for rx in (
         0,
         1,
+        2,
     ):
         stats_table = "rx_stats" if rx else "users_stats"
         redis_board = "relaxboard" if rx else "leaderboard"
+        
+        if rx == 2:
+            stats_table = "ap_stats"
+            redis_board = "autoboard"
+        
         for mode in ("std", "taiko", "ctb", "mania"):
+            if mode == "mania" and rx != 0:
+                continue
+            
+            if mode != "std" and rx == 2:
+                continue
+
             users = await db.fetchall(
                 f"select stats.id, stats.pp_{mode} pp, "
                 "stats.country, users.latest_activity, users.privileges "
@@ -58,28 +73,16 @@ async def recalc_ranks() -> None:
                     )
                     continue
 
-                if not int(user["privileges"]) & 1:
-                    await redis.zrem(f"ripple:{redis_board}:{mode}", user["id"])
-                    await redis.zrem(
-                        f"ripple:{redis_board}:{mode}:{user['country']}", user["id"]
-                    )
-                    continue
-
                 inactive_days = (current_time - user["latest_activity"]) / 60 / 60 / 24
-                if inactive_days > 60:
-                    await redis.zrem(f"ripple:{redis_board}:{mode}", user["id"])
-                    await redis.zrem(
-                        f"ripple:{redis_board}:{mode}:{user['country']}", user["id"]
-                    )
-                    continue
+                if inactive_days < 60 and int(user["privileges"]) & 1:
 
-                await redis.zadd(f"ripple:{redis_board}:{mode}", user["pp"], user["id"])
+                    await redis.zadd(f"ripple:{redis_board}:{mode}", user["pp"], user["id"])
 
-                country = user["country"].lower()
-                if country != "xx":
-                    await redis.zadd(
-                        f"ripple:{redis_board}:{mode}:{country}", user["pp"], user["id"]
-                    )
+                    country = user["country"].lower()
+                    if country != "xx":
+                        await redis.zadd(
+                            f"ripple:{redis_board}:{mode}:{country}", user["pp"], user["id"]
+                        )
 
     print(f"Recalculated all ranks in {time.time() - current_time:.2f} seconds")
 
