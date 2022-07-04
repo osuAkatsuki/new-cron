@@ -34,9 +34,6 @@ async def disconnect() -> None:
 async def recalc_ranks() -> None:
     print("Recalculating all user ranks")
 
-    for board in ("leaderboard", "relaxboard", "autoboard"):
-        await redis.delete(*await redis.keys(f"ripple:{board}:*"))
-
     current_time = int(time.time())
     for rx in (
         0,
@@ -66,18 +63,13 @@ async def recalc_ranks() -> None:
             )
 
             for user in users:
-                if not all((user["privileges"], user["latest_activity"])):
-                    await redis.zrem(f"ripple:{redis_board}:{mode}", user["id"])
-                    await redis.zrem(
-                        f"ripple:{redis_board}:{mode}:{user['country']}", user["id"]
-                    )
-                    continue
-
                 inactive_days = (current_time - user["latest_activity"]) / 60 / 60 / 24
                 if inactive_days < 60 and int(user["privileges"]) & 1:
 
                     await redis.zadd(
-                        f"ripple:{redis_board}:{mode}", user["pp"], user["id"]
+                        f"ripple:{redis_board}:{mode}",
+                        user["pp"],
+                        user["id"],
                     )
 
                     country = user["country"].lower()
@@ -85,6 +77,15 @@ async def recalc_ranks() -> None:
                         await redis.zadd(
                             f"ripple:{redis_board}:{mode}:{country}",
                             user["pp"],
+                            user["id"],
+                        )
+                else:
+                    await redis.zrem(f"ripple:{redis_board}:{mode}", user["id"])
+
+                    country = user["country"].lower()
+                    if country != "xx":
+                        await redis.zrem(
+                            f"ripple:{redis_board}:{mode}:{country}",
                             user["id"],
                         )
 
@@ -154,7 +155,10 @@ async def update_total_submitted_score_counts() -> None:
     if row is None:
         raise Exception("Couldn't fetch auto_increment for scores")
 
-    await redis.set("ripple:submitted_scores", f"{(row['AUTO_INCREMENT'] - 500_000_000) / 1_000_000:,.2f}m")
+    await redis.set(
+        "ripple:submitted_scores",
+        f"{(row['AUTO_INCREMENT'] - 500_000_000) / 1_000_000:,.2f}m",
+    )
 
     # scores_relax
     row = await db.fetch(
@@ -169,7 +173,9 @@ async def update_total_submitted_score_counts() -> None:
     if row is None:
         raise Exception("Couldn't fetch auto_increment for scores_relax")
 
-    await redis.set("ripple:submitted_scores_relax", f"{row['AUTO_INCREMENT'] / 1_000_000:,.2f}m")
+    await redis.set(
+        "ripple:submitted_scores_relax", f"{row['AUTO_INCREMENT'] / 1_000_000:,.2f}m"
+    )
 
     # scores_ap
     row = await db.fetch(
@@ -184,9 +190,15 @@ async def update_total_submitted_score_counts() -> None:
     if row is None:
         raise Exception("Couldn't fetch auto_increment for scores_ap")
 
-    await redis.set("ripple:submitted_scores_ap", f"{(row['AUTO_INCREMENT'] - 6_148_914_691_236_517_204) / 1_000_000:,.2f}m")
+    await redis.set(
+        "ripple:submitted_scores_ap",
+        f"{(row['AUTO_INCREMENT'] - 6_148_914_691_236_517_204) / 1_000_000:,.2f}m",
+    )
 
-    print(f"Updated total submitted score counts in {time.time() - current_time:.2f} seconds")
+    print(
+        f"Updated total submitted score counts in {time.time() - current_time:.2f} seconds"
+    )
+
 
 FREEZE_MESSAGE = "has been automatically restricted due to a pending freeze."
 
