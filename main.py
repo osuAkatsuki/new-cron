@@ -136,11 +136,63 @@ async def fix_supporter_badges() -> None:
     print(f"Fixed all supporter badges in {time.time() - current_time:.2f} seconds")
 
 
+async def update_total_submitted_score_counts() -> None:
+    print("Updating total submitted score counts")
+
+    current_time = time.time()
+
+    # scores
+    row = await db.fetch(
+        """
+        SELECT AUTO_INCREMENT
+          FROM INFORMATION_SCHEMA.TABLES
+         WHERE TABLE_SCHEMA = 'akatsuki'
+           AND TABLE_NAME = 'scores'
+      ORDER BY AUTO_INCREMENT DESC
+        """
+    )
+    if row is None:
+        raise Exception("Couldn't fetch auto_increment for scores")
+
+    await redis.set("ripple:submitted_scores", f"{(row['AUTO_INCREMENT'] - 500_000_000) / 1_000_000:,.2f}m")
+
+    # scores_relax
+    row = await db.fetch(
+        """
+        SELECT AUTO_INCREMENT
+          FROM INFORMATION_SCHEMA.TABLES
+         WHERE TABLE_SCHEMA = 'akatsuki'
+           AND TABLE_NAME = 'scores_relax'
+      ORDER BY AUTO_INCREMENT DESC
+        """
+    )
+    if row is None:
+        raise Exception("Couldn't fetch auto_increment for scores_relax")
+
+    await redis.set("ripple:submitted_scores_relax", f"{row['AUTO_INCREMENT'] / 1_000_000:,.2f}m")
+
+    # scores_ap
+    row = await db.fetch(
+        """
+        SELECT AUTO_INCREMENT
+          FROM INFORMATION_SCHEMA.TABLES
+         WHERE TABLE_SCHEMA = 'akatsuki'
+           AND TABLE_NAME = 'scores_ap'
+      ORDER BY AUTO_INCREMENT DESC
+        """
+    )
+    if row is None:
+        raise Exception("Couldn't fetch auto_increment for scores_ap")
+
+    await redis.set("ripple:submitted_scores_ap", f"{(row['AUTO_INCREMENT'] - 6_148_914_691_236_517_204) / 1_000_000:,.2f}m")
+
+    print(f"Updated total submitted score counts in {time.time() - current_time:.2f} seconds")
+
 FREEZE_MESSAGE = "has been automatically restricted due to a pending freeze."
 
 
-async def fix_freeze_timers() -> None:
-    print("Fixing expired freeze timers")
+async def freeze_expired_freeze_timers() -> None:
+    print("Freezing users with expired freeze timers")
 
     expired_users = await db.fetchall(
         "select id, username, privileges, frozen from users where frozen != 0 and frozen != 1"
@@ -184,7 +236,7 @@ async def fix_freeze_timers() -> None:
         async with ClientSession() as session:
             await webhook.post(session)
 
-    print(f"Fixed all freeze timers in {time.time() - current_time:.2f} seconds")
+    print(f"Froze all users in {time.time() - current_time:.2f} seconds")
 
 
 async def clear_scores() -> None:
@@ -209,7 +261,8 @@ async def main() -> None:
 
     await recalc_ranks()
     await fix_supporter_badges()
-    await fix_freeze_timers()
+    await update_total_submitted_score_counts()
+    await freeze_expired_freeze_timers()
     await clear_scores()
 
     await disconnect()
