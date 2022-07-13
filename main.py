@@ -144,7 +144,7 @@ def magnitude_fmt(val: float) -> str:
     # NOTE: this rounds & uses floats which leads to some inaccuracy
     for suffix in ["", "k", "m", "b", "t"]:
         if val < 1000:
-            return f"{val:.1f}{suffix}"
+            return f"{val:.2f}{suffix}"
 
         val /= 1000
 
