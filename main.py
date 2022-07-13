@@ -40,10 +40,13 @@ async def recalc_ranks() -> None:
         1,
         2,
     ):
-        stats_table = "rx_stats" if rx else "users_stats"
-        redis_board = "relaxboard" if rx else "leaderboard"
-
-        if rx == 2:
+        if rx == 0:
+            stats_table = "users_stats"
+            redis_board = "leaderboard"
+        elif rx == 1:
+            stats_table = "rx_stats"
+            redis_board = "relaxboard"
+        else:  # rx == 2:
             stats_table = "ap_stats"
             redis_board = "autoboard"
 
@@ -55,10 +58,10 @@ async def recalc_ranks() -> None:
                 continue
 
             users = await db.fetchall(
-                f"select stats.id, stats.pp_{mode} pp, "
+                f"select users.id, stats.pp_{mode} pp, "
                 "stats.country, users.latest_activity, users.privileges "
-                f"from {stats_table} stats "
-                "left join users on stats.id = users.id "
+                "from users "
+                f"left join {stats_table} stats on stats.id = users.id "
                 f"where stats.pp_{mode} > 0"
             )
 
