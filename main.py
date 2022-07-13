@@ -40,10 +40,13 @@ async def recalc_ranks() -> None:
         1,
         2,
     ):
-        stats_table = "rx_stats" if rx else "users_stats"
-        redis_board = "relaxboard" if rx else "leaderboard"
-
-        if rx == 2:
+        if rx == 0:
+            stats_table = "users_stats"
+            redis_board = "leaderboard"
+        elif rx == 1:
+            stats_table = "rx_stats"
+            redis_board = "relaxboard"
+        else:  # rx == 2:
             stats_table = "ap_stats"
             redis_board = "autoboard"
 
@@ -55,10 +58,10 @@ async def recalc_ranks() -> None:
                 continue
 
             users = await db.fetchall(
-                f"select stats.id, stats.pp_{mode} pp, "
+                f"select users.id, stats.pp_{mode} pp, "
                 "stats.country, users.latest_activity, users.privileges "
-                f"from {stats_table} stats "
-                "left join users on stats.id = users.id "
+                "from users "
+                f"left join {stats_table} stats on stats.id = users.id "
                 f"where stats.pp_{mode} > 0"
             )
 
@@ -137,6 +140,17 @@ async def fix_supporter_badges() -> None:
     print(f"Fixed all supporter badges in {time.time() - current_time:.2f} seconds")
 
 
+def magnitude_fmt(val: float) -> str:
+    # NOTE: this rounds & uses floats which leads to some inaccuracy
+    for suffix in ["", "k", "m", "b", "t"]:
+        if val < 1000:
+            return f"{val:.2f}{suffix}"
+
+        val /= 1000
+
+    raise RuntimeError("magnitude_fmt only supports up to trillions")
+
+
 async def update_total_submitted_score_counts() -> None:
     print("Updating total submitted score counts")
 
@@ -157,7 +171,7 @@ async def update_total_submitted_score_counts() -> None:
 
     await redis.set(
         "ripple:submitted_scores",
-        f"{(row['AUTO_INCREMENT'] - 500_000_000) / 1_000_000:,.2f}m",
+        magnitude_fmt(row["AUTO_INCREMENT"] - 500_000_000),
     )
 
     # scores_relax
@@ -174,7 +188,8 @@ async def update_total_submitted_score_counts() -> None:
         raise Exception("Couldn't fetch auto_increment for scores_relax")
 
     await redis.set(
-        "ripple:submitted_scores_relax", f"{row['AUTO_INCREMENT'] / 1_000_000:,.2f}m"
+        "ripple:submitted_scores_relax",
+        magnitude_fmt(row["AUTO_INCREMENT"]),
     )
 
     # scores_ap
@@ -192,7 +207,7 @@ async def update_total_submitted_score_counts() -> None:
 
     await redis.set(
         "ripple:submitted_scores_ap",
-        f"{(row['AUTO_INCREMENT'] - 6_148_914_691_236_517_204) / 1_000_000:,.2f}m",
+        magnitude_fmt(row["AUTO_INCREMENT"] - 6_148_914_691_236_517_204),
     )
 
     print(
