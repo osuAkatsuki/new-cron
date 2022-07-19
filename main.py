@@ -285,7 +285,7 @@ async def main() -> None:
     await fix_supporter_badges()
     await update_total_submitted_score_counts()
     await freeze_expired_freeze_timers()
-    await clear_scores()
+    # await clear_scores() # disabled as of 2022-07-19
 
     await disconnect()
 
