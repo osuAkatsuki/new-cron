@@ -34,29 +34,22 @@ async def disconnect() -> None:
 async def recalc_ranks() -> None:
     print("Recalculating all user ranks")
 
-    current_time = int(time.time())
-    for rx in (
-        0,
-        1,
-        2,
-    ):
+    start_time = int(time.time())
+    for rx in (0, 1, 2):
         if rx == 0:
             stats_table = "users_stats"
             redis_board = "leaderboard"
+            modes = ("std", "taiko", "ctb", "mania")
         elif rx == 1:
             stats_table = "rx_stats"
             redis_board = "relaxboard"
+            modes = ("std", "taiko", "ctb")
         else:  # rx == 2:
             stats_table = "ap_stats"
             redis_board = "autoboard"
+            modes = ("std",)
 
-        for mode in ("std", "taiko", "ctb", "mania"):
-            if mode == "mania" and rx != 0:
-                continue
-
-            if mode != "std" and rx == 2:
-                continue
-
+        for mode in modes:
             users = await db.fetchall(
                 f"select users.id, stats.pp_{mode} pp, "
                 "stats.country, users.latest_activity, users.privileges "
@@ -66,8 +59,10 @@ async def recalc_ranks() -> None:
             )
 
             for user in users:
-                inactive_days = (current_time - user["latest_activity"]) / 60 / 60 / 24
-                if inactive_days < 60 and int(user["privileges"]) & 1:
+                # TODO: rather than using users.latest_activity, this should actually
+                # be using the player's last submitted score time on a per-mode basis
+                inactive_days = (start_time - user["latest_activity"]) / 60 / 60 / 24
+                if inactive_days < 60 and user["privileges"] & 1:
 
                     await redis.zadd(
                         f"ripple:{redis_board}:{mode}",
@@ -92,16 +87,16 @@ async def recalc_ranks() -> None:
                             user["id"],
                         )
 
-    print(f"Recalculated all ranks in {time.time() - current_time:.2f} seconds")
+    print(f"Recalculated all ranks in {time.time() - start_time:.2f} seconds")
 
 
 async def fix_supporter_badges() -> None:
     print("Fixing all supporter badges")
 
-    current_time = int(time.time())
+    start_time = int(time.time())
     expired_donors = await db.fetchall(
         "select id, privileges from users where privileges & 4 and donor_expire < %s",
-        (current_time,),
+        (start_time,),
     )
 
     for user in expired_donors:
@@ -123,21 +118,21 @@ async def fix_supporter_badges() -> None:
     # wipe any somehow missed badges
     await db.execute(
         "delete user_badges from user_badges left join users on user_badges.user = users.id where badge in (59, 36) and users.donor_expire < %s",
-        (current_time,),
+        (start_time,),
     )
 
     await db.execute(
         "update users_stats left join users using(id) set users_stats.can_custom_badge = 0 where users.donor_expire < %s",
-        (current_time,),
+        (start_time,),
     )
 
     # now fix missing custom badges
     await db.execute(
         "update users_stats left join users using(id) set users_stats.can_custom_badge = 1 where users.donor_expire > %s",
-        (current_time,),
+        (start_time,),
     )
 
-    print(f"Fixed all supporter badges in {time.time() - current_time:.2f} seconds")
+    print(f"Fixed all supporter badges in {time.time() - start_time:.2f} seconds")
 
 
 def magnitude_fmt(val: float) -> str:
@@ -154,7 +149,7 @@ def magnitude_fmt(val: float) -> str:
 async def update_total_submitted_score_counts() -> None:
     print("Updating total submitted score counts")
 
-    current_time = time.time()
+    start_time = time.time()
 
     # scores
     row = await db.fetch(
@@ -211,7 +206,7 @@ async def update_total_submitted_score_counts() -> None:
     )
 
     print(
-        f"Updated total submitted score counts in {time.time() - current_time:.2f} seconds"
+        f"Updated total submitted score counts in {time.time() - start_time:.2f} seconds"
     )
 
 
@@ -225,11 +220,11 @@ async def freeze_expired_freeze_timers() -> None:
         "select id, username, privileges, frozen from users where frozen != 0 and frozen != 1"
     )
 
-    current_time = int(time.time())
+    start_time = int(time.time())
     for user in expired_users:
         new_priv = user["privileges"] & ~1
 
-        if int(user["frozen"]) != 0 and user["frozen"] > current_time:
+        if int(user["frozen"]) != 0 and user["frozen"] > start_time:
             continue
 
         await db.execute(
@@ -263,26 +258,26 @@ async def freeze_expired_freeze_timers() -> None:
         async with ClientSession() as session:
             await webhook.post(session)
 
-    print(f"Froze all users in {time.time() - current_time:.2f} seconds")
+    print(f"Froze all users in {time.time() - start_time:.2f} seconds")
 
 
 async def clear_scores() -> None:
     print("Deleting clearable scores")
 
-    current_time = int(time.time())
+    start_time = int(time.time())
 
     for table in ("scores", "scores_relax"):
         await db.execute(
             f"delete from {table} where completed < 3 and time < UNIX_TIMESTAMP(NOW() - INTERVAL 24 HOUR)"
         )
 
-    print(f"Deleted all clearable scores in {time.time() - current_time:.2f} seconds")
+    print(f"Deleted all clearable scores in {time.time() - start_time:.2f} seconds")
 
 
 async def main() -> None:
     print("Starting Akatsuki cron")
 
-    current_time = int(time.time())
+    start_time = int(time.time())
 
     await connect()
 
@@ -294,7 +289,7 @@ async def main() -> None:
 
     await disconnect()
 
-    print(f"Finished running cron in {time.time() - current_time:.2f} seconds")
+    print(f"Finished running cron in {time.time() - start_time:.2f} seconds")
 
 
 uvloop.install()
