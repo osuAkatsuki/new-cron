@@ -30,6 +30,12 @@ async def disconnect() -> None:
 
     print("Disconnected from database and redis")
 
+modes = {
+    "std": 0,
+    "taiko": 1,
+    "ctb": 2,
+    "mania": 3
+}
 
 async def recalc_ranks() -> None:
     print("Recalculating all user ranks")
@@ -38,14 +44,17 @@ async def recalc_ranks() -> None:
     for rx in (0, 1, 2):
         if rx == 0:
             stats_table = "users_stats"
+            scores_table = "scores"
             redis_board = "leaderboard"
             modes = ("std", "taiko", "ctb", "mania")
         elif rx == 1:
             stats_table = "rx_stats"
+            scores_table = "scores_relax"
             redis_board = "relaxboard"
             modes = ("std", "taiko", "ctb")
         else:  # rx == 2:
             stats_table = "ap_stats"
+            scores_table = "scores_ap"
             redis_board = "autoboard"
             modes = ("std",)
 
@@ -59,11 +68,14 @@ async def recalc_ranks() -> None:
             )
 
             for user in users:
-                # TODO: rather than using users.latest_activity, this should actually
-                # be using the player's last submitted score time on a per-mode basis
-                inactive_days = (start_time - user["latest_activity"]) / 60 / 60 / 24
+                last_score_time = await db.fetch(
+                    f"select max(time) time from {scores_table} inner join beatmaps using(beatmap_md5) "
+                    "where userid = %s and completed = 3 and ranked in (2, 3) and play_mode = %s order by pp desc limit 100",
+                    [user["id"], modes[mode]]
+                )
+                inactive_days = (start_time - last_score_time["time"]) / 60 / 60 / 24
+                
                 if inactive_days < 60 and user["privileges"] & 1:
-
                     await redis.zadd(
                         f"ripple:{redis_board}:{mode}",
                         user["pp"],
