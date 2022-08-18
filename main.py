@@ -69,11 +69,11 @@ async def recalc_ranks() -> None:
 
             for user in users:
                 last_score_time = await db.fetch(
-                    f"select max(time) from {scores_table} inner join beatmaps using(beatmap_md5) "
+                    f"select max(time) time from {scores_table} inner join beatmaps using(beatmap_md5) "
                     "where userid = %s and completed = 3 and ranked in (2, 3) and play_mode = %s order by pp desc limit 100",
                     [user["id"], modes[mode]]
                 )
-                inactive_days = (start_time - last_score_time) / 60 / 60 / 24
+                inactive_days = (start_time - last_score_time["time"]) / 60 / 60 / 24
                 
                 if inactive_days < 60 and user["privileges"] & 1:
                     await redis.zadd(
