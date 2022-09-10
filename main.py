@@ -30,7 +30,7 @@ async def disconnect() -> None:
 
     print("Disconnected from database and redis")
 
-modes = {
+STR_TO_INT_MODE = {
     "std": 0,
     "taiko": 1,
     "ctb": 2,
@@ -69,11 +69,14 @@ async def recalc_ranks() -> None:
 
             for user in users:
                 last_score_time = await db.fetch(
-                    f"select max(time) time from {scores_table} inner join beatmaps using(beatmap_md5) "
+                    f"select max(time) as time from {scores_table} inner join beatmaps using(beatmap_md5) "
                     "where userid = %s and completed = 3 and ranked in (2, 3) and play_mode = %s order by pp desc limit 100",
-                    [user["id"], modes[mode]]
+                    [user["id"], STR_TO_INT_MODE[mode]]
                 )
-                inactive_days = (start_time - last_score_time["time"]) / 60 / 60 / 24
+                if not last_score_time or last_score_time["time"] is None:
+                    inactive_days = 60
+                else:
+                    inactive_days = (start_time - last_score_time["time"]) / 60 / 60 / 24
                 
                 if inactive_days < 60 and user["privileges"] & 1:
                     await redis.zadd(
