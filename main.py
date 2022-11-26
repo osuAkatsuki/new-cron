@@ -1,4 +1,11 @@
 #!/usr/bin/env python3.9
+import ddtrace
+ddtrace.patch_all()
+from ddtrace.profiling import Profiler
+Profiler().start()
+from typing import Any
+from typing import cast
+
 from cmyui.mysql import AsyncSQLPool
 from cmyui.discord import Webhook, Embed
 from aiohttp import ClientSession
@@ -60,24 +67,17 @@ async def recalc_ranks() -> None:
 
         for mode in modes:
             users = await db.fetchall(
-                f"select users.id, stats.pp_{mode} pp, "
+                f"SELECT users.id, stats.pp_{mode} pp, stats.latest_pp_awarded_{mode} AS latest_pp_awarded, "
                 "stats.country, users.latest_activity, users.privileges "
-                "from users "
-                f"left join {stats_table} stats on stats.id = users.id "
-                f"where stats.pp_{mode} > 0"
+                "FROM users "
+                f"LEFT JOIN {stats_table} stats on stats.id = users.id "
+                f"WHERE stats.pp_{mode} > 0"
             )
+            users = cast(list[dict[str, Any]], users)
 
             for user in users:
-                last_score_time = await db.fetch(
-                    f"select max(time) as time from {scores_table} inner join beatmaps using(beatmap_md5) "
-                    "where userid = %s and completed = 3 and ranked in (2, 3) and play_mode = %s order by pp desc limit 100",
-                    [user["id"], STR_TO_INT_MODE[mode]]
-                )
-                if not last_score_time or last_score_time["time"] is None:
-                    inactive_days = 60
-                else:
-                    inactive_days = (start_time - last_score_time["time"]) / 60 / 60 / 24
-                
+                inactive_days = (start_time - user["latest_pp_awarded"]) / 60 / 60 / 24
+
                 if inactive_days < 60 and user["privileges"] & 1:
                     await redis.zadd(
                         f"ripple:{redis_board}:{mode}",
