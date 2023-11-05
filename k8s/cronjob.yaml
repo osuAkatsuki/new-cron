@@ -4,6 +4,7 @@ metadata:
   name: new-cron-production
 spec:
   schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
   jobTemplate:
     spec:
       template:
