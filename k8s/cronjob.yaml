@@ -11,7 +11,7 @@ spec:
           containers:
           - name: new-cron-production
             image: osuakatsuki/new-cron:latest
-            imagePullPolicy: IfNotPresent
+            imagePullPolicy: Always
             command:
               - ./scripts/bootstrap.sh
             env:
