@@ -10,7 +10,7 @@ spec:
         spec:
           containers:
           - name: new-cron-production
-            image: osuAkatsuki/new-cron:latest
+            image: osuakatsuki/new-cron:latest
             imagePullPolicy: IfNotPresent
             command:
             - python3 main.py
