@@ -13,6 +13,7 @@ spec:
             image: osuakatsuki/new-cron:latest
             imagePullPolicy: IfNotPresent
             command:
+            - cd /srv/root
             - python3 main.py
           restartPolicy: OnFailure
           imagePullSecrets:
