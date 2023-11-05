@@ -89,16 +89,14 @@ async def recalc_ranks() -> None:
                 if inactive_days < 60 and user["privileges"] & 1:
                     await redis.zadd(
                         f"ripple:{redis_board}:{mode}",
-                        user["pp"],
-                        user["id"],
+                        {user["id"]: user["pp"]},
                     )
 
                     country = user["country"].lower()
                     if country != "xx":
                         await redis.zadd(
                             f"ripple:{redis_board}:{mode}:{country}",
-                            user["pp"],
-                            user["id"],
+                            {user["id"]: user["pp"]},
                         )
                 else:
                     await redis.zrem(f"ripple:{redis_board}:{mode}", user["id"])
