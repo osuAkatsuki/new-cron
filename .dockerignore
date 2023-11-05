@@ -1,0 +1,6 @@
+.env
+venv/
+Dockerfile
+k8s/
+.github/
+CODEOWNERS

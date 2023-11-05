@@ -1,9 +1,13 @@
 FROM python:3.9
 
-WORKDIR /srv/root
+ENV PYTHONUNBUFFERED=1
 
-COPY . .
-
+COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-CMD ["python", "main.py"]
+COPY scripts /scripts
+
+COPY . /srv/root
+WORKDIR /srv/root
+
+ENTRYPOINT ["/scripts/bootstrap.sh"]

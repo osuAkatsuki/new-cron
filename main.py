@@ -8,16 +8,25 @@ from aiohttp import ClientSession
 
 import aioredis
 import asyncio
-import config
 import uvloop
 import time
+
+import settings
 
 db = AsyncSQLPool()
 redis: "aioredis.Redis"
 
 
 async def connect() -> None:
-    await db.connect(config.sql)
+    await db.connect(
+        {
+            "db": settings.DB_NAME,
+            "host": settings.DB_HOST,
+            "password": settings.DB_PASS,
+            "user": settings.DB_USER,
+            "port": settings.DB_PORT,
+        }
+    )
 
     global redis
     redis = await aioredis.create_redis_pool("redis://localhost:6379/0")
@@ -33,12 +42,9 @@ async def disconnect() -> None:
 
     print("Disconnected from database and redis")
 
-STR_TO_INT_MODE = {
-    "std": 0,
-    "taiko": 1,
-    "ctb": 2,
-    "mania": 3
-}
+
+STR_TO_INT_MODE = {"std": 0, "taiko": 1, "ctb": 2, "mania": 3}
+
 
 async def recalc_ranks() -> None:
     print("Recalculating all user ranks")
@@ -257,7 +263,7 @@ async def freeze_expired_freeze_timers() -> None:
         )
 
         # post to webhook
-        webhook = Webhook(config.ac_webhook)
+        webhook = Webhook(settings.DISCORD_AC_WEBHOOK)
         embed = Embed(color=0x542CB8)
 
         embed.add_field(name="** **", value=f"{user['username']} {FREEZE_MESSAGE}")
