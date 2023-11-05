@@ -1,0 +1,17 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: new-cron-production
+spec:
+  schedule: "*/10 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: new-cron-production
+            image: osuAkatsuki/new-cron:latest
+            imagePullPolicy: IfNotPresent
+            command:
+            - python3 main.py
+          restartPolicy: OnFailure

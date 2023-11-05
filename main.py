@@ -1,8 +1,4 @@
 #!/usr/bin/env python3.9
-import ddtrace
-ddtrace.patch_all()
-from ddtrace.profiling import Profiler
-Profiler().start()
 from typing import Any
 from typing import cast
 
