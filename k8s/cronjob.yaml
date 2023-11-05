@@ -15,3 +15,5 @@ spec:
             command:
             - python3 main.py
           restartPolicy: OnFailure
+          imagePullSecrets:
+            - name: osuakatsuki-registry-secret
