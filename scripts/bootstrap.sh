@@ -13,6 +13,9 @@ if [[ $PULL_SECRETS_FROM_VAULT -eq 1 ]]; then
   # TODO: revert to $APP_ENV
   akatsuki vault get new-cron production-k8s -o .env
   source .env
+  ls .env
+  pwd
+  # cat .env
 fi
 
 # await database availability
