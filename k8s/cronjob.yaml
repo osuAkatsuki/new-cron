@@ -17,25 +17,25 @@ spec:
             env:
               - name: KUBERNETES
                 value: 'true'
-            - name: PULL_SECRETS_FROM_VAULT
-              value: '1'
-            - name: VAULT_ADDR
-              valueFrom:
-                secretKeyRef:
-                  name: vault
-                  key: address
-            - name: VAULT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: vault
-                  key: token
-            - name: PYPI_INDEX_URL
-              valueFrom:
-                secretKeyRef:
-                  name: pypi
-                  key: address
-            - name: APP_ENV
-              value: production # TODO
+              - name: PULL_SECRETS_FROM_VAULT
+                value: '1'
+              - name: VAULT_ADDR
+                valueFrom:
+                  secretKeyRef:
+                    name: vault
+                    key: address
+              - name: VAULT_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: vault
+                    key: token
+              - name: PYPI_INDEX_URL
+                valueFrom:
+                  secretKeyRef:
+                    name: pypi
+                    key: address
+              - name: APP_ENV
+                value: production # TODO
           restartPolicy: OnFailure
           imagePullSecrets:
             - name: osuakatsuki-registry-secret
