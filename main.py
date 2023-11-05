@@ -1,15 +1,14 @@
 #!/usr/bin/env python3.9
+import asyncio
+import time
 from typing import Any
 from typing import cast
 
-from cmyui.mysql import AsyncSQLPool
-from cmyui.discord import Webhook, Embed
-from aiohttp import ClientSession
-
-import aioredis
-import asyncio
+import redis.asyncio as aioredis
 import uvloop
-import time
+from aiohttp import ClientSession
+from cmyui.discord import Webhook, Embed
+from cmyui.mysql import AsyncSQLPool
 
 import settings
 
@@ -29,7 +28,15 @@ async def connect() -> None:
     )
 
     global redis
-    redis = await aioredis.create_redis_pool("redis://localhost:6379/0")
+
+    redis = aioredis.Redis(
+        host=settings.REDIS_HOST,
+        port=settings.REDIS_PORT,
+        username=settings.REDIS_USER,
+        password=settings.REDIS_PASS,
+        db=settings.REDIS_DB,
+        ssl=settings.REDIS_USE_SSL,
+    )
 
     print("Connected to database and redis")
 
@@ -37,8 +44,7 @@ async def connect() -> None:
 async def disconnect() -> None:
     await db.close()
 
-    redis.close()
-    await redis.wait_closed()
+    await redis.close()
 
     print("Disconnected from database and redis")
 
