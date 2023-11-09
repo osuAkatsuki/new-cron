@@ -1,7 +1,9 @@
 #!/usr/bin/env python3.9
 import ddtrace
+
 ddtrace.patch_all()
 from ddtrace.profiling import Profiler
+
 Profiler().start()
 from typing import Any
 from typing import cast
@@ -37,12 +39,9 @@ async def disconnect() -> None:
 
     print("Disconnected from database and redis")
 
-STR_TO_INT_MODE = {
-    "std": 0,
-    "taiko": 1,
-    "ctb": 2,
-    "mania": 3
-}
+
+STR_TO_INT_MODE = {"std": 0, "taiko": 1, "ctb": 2, "mania": 3}
+
 
 async def recalc_ranks() -> None:
     print("Recalculating all user ranks")
@@ -78,7 +77,7 @@ async def recalc_ranks() -> None:
             for user in users:
                 inactive_days = (start_time - user["latest_pp_awarded"]) / 60 / 60 / 24
 
-                if inactive_days < 60 and user["privileges"] & 1:
+                if inactive_days < 60 and user["privileges"] & 1 and user["pp"] > 0:
                     await redis.zadd(
                         f"ripple:{redis_board}:{mode}",
                         user["pp"],
