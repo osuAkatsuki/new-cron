@@ -86,7 +86,7 @@ async def recalc_ranks() -> None:
             for user in users:
                 inactive_days = (start_time - user["latest_pp_awarded"]) / 60 / 60 / 24
 
-                if inactive_days < 60 and user["privileges"] & 1:
+                if inactive_days < 60 and user["privileges"] & 1 and user["pp"] > 0:
                     await redis.zadd(
                         f"ripple:{redis_board}:{mode}",
                         {user["id"]: user["pp"]},
