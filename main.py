@@ -44,17 +44,14 @@ async def recalc_ranks() -> None:
     for rx in (0, 1, 2):
         if rx == 0:
             stats_table = "users_stats"
-            scores_table = "scores"
             redis_board = "leaderboard"
             modes = ("std", "taiko", "ctb", "mania")
         elif rx == 1:
             stats_table = "rx_stats"
-            scores_table = "scores_relax"
             redis_board = "relaxboard"
             modes = ("std", "taiko", "ctb")
         else:  # rx == 2:
             stats_table = "ap_stats"
-            scores_table = "scores_ap"
             redis_board = "autoboard"
             modes = ("std",)
 
@@ -133,10 +130,18 @@ async def fix_supporter_badges() -> None:
         "update users_stats left join users using(id) set users_stats.can_custom_badge = 0 where users.donor_expire < %s",
         (start_time,),
     )
+    await db.execute(
+        "update users set can_custom_badge = 0 where donor_expire < %s",
+        (start_time,),
+    )
 
     # now fix missing custom badges
     await db.execute(
         "update users_stats left join users using(id) set users_stats.can_custom_badge = 1 where users.donor_expire > %s",
+        (start_time,),
+    )
+    await db.execute(
+        "update users set can_custom_badge = 1 where donor_expire > %s",
         (start_time,),
     )
 
