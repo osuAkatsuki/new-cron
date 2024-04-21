@@ -62,7 +62,7 @@ async def recalc_ranks() -> None:
                 WHERE user_stats.pp > 0
                 AND mode = %s
                 """,
-                (STR_TO_INT_MODE[mode],),
+                (STR_TO_INT_MODE[mode] + (rx * 4),),
             )
             users = cast(list[dict[str, Any]], users)
 
