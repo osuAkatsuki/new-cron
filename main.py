@@ -127,20 +127,13 @@ async def fix_supporter_badges() -> None:
         (start_time,),
     )
 
-    await db.execute(
-        "update users_stats left join users using(id) set users_stats.can_custom_badge = 0 where users.donor_expire < %s",
-        (start_time,),
-    )
+    # remove custom badge perms from any expired donors
     await db.execute(
         "update users set can_custom_badge = 0 where donor_expire < %s",
         (start_time,),
     )
 
     # now fix missing custom badges
-    await db.execute(
-        "update users_stats left join users using(id) set users_stats.can_custom_badge = 1 where users.donor_expire > %s",
-        (start_time,),
-    )
     await db.execute(
         "update users set can_custom_badge = 1 where donor_expire > %s",
         (start_time,),
