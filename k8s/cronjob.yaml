@@ -3,7 +3,7 @@ kind: CronJob
 metadata:
   name: new-cron-production
 spec:
-  schedule: "*/10 * * * *"
+  schedule: "*/30 * * * *"
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
