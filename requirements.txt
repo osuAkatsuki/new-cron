@@ -30,7 +30,7 @@ PyMySQL==1.0.2
 pyparsing==3.0.9
 pyrsistent==0.19.2
 python-dotenv==1.0.0
-redis==5.0.1
+redis
 six==1.16.0
 tenacity==8.1.0
 tomli==2.0.1
