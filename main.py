@@ -46,7 +46,7 @@ async def connect() -> None:
 async def disconnect() -> None:
     await db.close()
 
-    await redis.close()
+    await redis.aclose()
 
     print("Disconnected from database and redis")
 
