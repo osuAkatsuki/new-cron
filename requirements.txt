@@ -38,3 +38,4 @@ typing_extensions==4.2.0
 uvloop==0.16.0
 xmltodict==0.13.0
 yarl==1.7.2
+cryptography
