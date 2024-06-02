@@ -37,6 +37,8 @@ async def connect() -> None:
         db=settings.REDIS_DB,
         ssl=settings.REDIS_USE_SSL,
     )
+    await redis.initialize()  # type: ignore[unused-awaitable]
+    await redis.ping()
 
     print("Connected to database and redis")
 
