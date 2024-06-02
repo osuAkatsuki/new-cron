@@ -83,30 +83,33 @@ async def recalc_ranks() -> None:
             )
             users = cast(list[dict[str, Any]], users)
 
-            for user in users:
-                inactive_days = (start_time - user["latest_pp_awarded"]) / 60 / 60 / 24
+            async with redis.pipeline() as pipe:
+                for user in users:
+                    inactive_days = (start_time - user["latest_pp_awarded"]) / 60 / 60 / 24
 
-                if inactive_days < 60 and user["privileges"] & 1 and user["pp"] > 0:
-                    await redis.zadd(
-                        f"ripple:{redis_board}:{mode}",
-                        {user["id"]: user["pp"]},
-                    )
-
-                    country = user["country"].lower()
-                    if country != "xx":
-                        await redis.zadd(
-                            f"ripple:{redis_board}:{mode}:{country}",
+                    if inactive_days < 60 and user["privileges"] & 1 and user["pp"] > 0:
+                        await pipe.zadd(
+                            f"ripple:{redis_board}:{mode}",
                             {user["id"]: user["pp"]},
                         )
-                else:
-                    await redis.zrem(f"ripple:{redis_board}:{mode}", user["id"])
 
-                    country = user["country"].lower()
-                    if country != "xx":
-                        await redis.zrem(
-                            f"ripple:{redis_board}:{mode}:{country}",
-                            user["id"],
-                        )
+                        country = user["country"].lower()
+                        if country != "xx":
+                            await pipe.zadd(
+                                f"ripple:{redis_board}:{mode}:{country}",
+                                {user["id"]: user["pp"]},
+                            )
+                    else:
+                        await pipe.zrem(f"ripple:{redis_board}:{mode}", user["id"])
+
+                        country = user["country"].lower()
+                        if country != "xx":
+                            await pipe.zrem(
+                                f"ripple:{redis_board}:{mode}:{country}",
+                                user["id"],
+                            )
+
+                await pipe.execute()
 
     print(f"Recalculated all ranks in {time.time() - start_time:.2f} seconds")
 
