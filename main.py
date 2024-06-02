@@ -58,28 +58,26 @@ async def recalc_ranks() -> None:
     start_time = int(time.time())
     for rx in (0, 1, 2):
         if rx == 0:
-            stats_table = "users_stats"
-            scores_table = "scores"
             redis_board = "leaderboard"
             modes = ("std", "taiko", "ctb", "mania")
         elif rx == 1:
-            stats_table = "rx_stats"
-            scores_table = "scores_relax"
             redis_board = "relaxboard"
             modes = ("std", "taiko", "ctb")
         else:  # rx == 2:
-            stats_table = "ap_stats"
-            scores_table = "scores_ap"
             redis_board = "autoboard"
             modes = ("std",)
 
         for mode in modes:
             users = await db.fetchall(
-                f"SELECT users.id, stats.pp_{mode} pp, stats.latest_pp_awarded_{mode} AS latest_pp_awarded, "
-                "stats.country, users.latest_activity, users.privileges "
-                "FROM users "
-                f"LEFT JOIN {stats_table} stats on stats.id = users.id "
-                f"WHERE stats.pp_{mode} > 0"
+                """
+                SELECT users.id, user_stats.pp, user_stats.latest_pp_awarded,
+                users.country, users.latest_activity, users.privileges
+                FROM users
+                LEFT JOIN user_stats on user_stats.user_id = users.id
+                WHERE user_stats.pp > 0
+                AND mode = %s
+                """,
+                (STR_TO_INT_MODE[mode] + (rx * 4),),
             )
             users = cast(list[dict[str, Any]], users)
 
@@ -142,14 +140,15 @@ async def fix_supporter_badges() -> None:
         (start_time,),
     )
 
+    # remove custom badge perms from any expired donors
     await db.execute(
-        "update users_stats left join users using(id) set users_stats.can_custom_badge = 0 where users.donor_expire < %s",
+        "update users set can_custom_badge = 0 where donor_expire < %s",
         (start_time,),
     )
 
     # now fix missing custom badges
     await db.execute(
-        "update users_stats left join users using(id) set users_stats.can_custom_badge = 1 where users.donor_expire > %s",
+        "update users set can_custom_badge = 1 where donor_expire > %s",
         (start_time,),
     )
 
