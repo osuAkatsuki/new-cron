@@ -1,26 +1,44 @@
 #!/usr/bin/env python3.9
+import asyncio
+import time
 from typing import Any
 from typing import cast
 
-from cmyui.mysql import AsyncSQLPool
-from cmyui.discord import Webhook, Embed
-from aiohttp import ClientSession
-
-import aioredis
-import asyncio
-import config
+import redis.asyncio as aioredis
 import uvloop
-import time
+from aiohttp import ClientSession
+from cmyui.discord import Webhook, Embed
+from cmyui.mysql import AsyncSQLPool
+
+import settings
 
 db = AsyncSQLPool()
 redis: "aioredis.Redis"
 
 
 async def connect() -> None:
-    await db.connect(config.sql)
+    await db.connect(
+        {
+            "db": settings.DB_NAME,
+            "host": settings.DB_HOST,
+            "password": settings.DB_PASS,
+            "user": settings.DB_USER,
+            "port": settings.DB_PORT,
+        }
+    )
 
     global redis
-    redis = await aioredis.create_redis_pool("redis://localhost:6379/0")
+
+    redis = aioredis.Redis(
+        host=settings.REDIS_HOST,
+        port=settings.REDIS_PORT,
+        username=settings.REDIS_USER,
+        password=settings.REDIS_PASS,
+        db=settings.REDIS_DB,
+        ssl=settings.REDIS_USE_SSL,
+    )
+    await redis.initialize()  # type: ignore[unused-awaitable]
+    await redis.ping()
 
     print("Connected to database and redis")
 
@@ -28,8 +46,7 @@ async def connect() -> None:
 async def disconnect() -> None:
     await db.close()
 
-    redis.close()
-    await redis.wait_closed()
+    await redis.aclose()
 
     print("Disconnected from database and redis")
 
@@ -72,16 +89,14 @@ async def recalc_ranks() -> None:
                 if inactive_days < 60 and user["privileges"] & 1 and user["pp"] > 0:
                     await redis.zadd(
                         f"ripple:{redis_board}:{mode}",
-                        user["pp"],
-                        user["id"],
+                        {user["id"]: user["pp"]},
                     )
 
                     country = user["country"].lower()
                     if country != "xx":
                         await redis.zadd(
                             f"ripple:{redis_board}:{mode}:{country}",
-                            user["pp"],
-                            user["id"],
+                            {user["id"]: user["pp"]},
                         )
                 else:
                     await redis.zrem(f"ripple:{redis_board}:{mode}", user["id"])
@@ -253,7 +268,7 @@ async def freeze_expired_freeze_timers() -> None:
         )
 
         # post to webhook
-        webhook = Webhook(config.ac_webhook)
+        webhook = Webhook(settings.DISCORD_AC_WEBHOOK)
         embed = Embed(color=0x542CB8)
 
         embed.add_field(name="** **", value=f"{user['username']} {FREEZE_MESSAGE}")

@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: new-cron-production
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: new-cron-production
+            image: osuakatsuki/new-cron:latest
+            imagePullPolicy: Always
+            command:
+              - ./scripts/bootstrap.sh
+            env:
+              - name: KUBERNETES
+                value: 'true'
+              - name: PULL_SECRETS_FROM_VAULT
+                value: '1'
+              - name: VAULT_ADDR
+                valueFrom:
+                  secretKeyRef:
+                    name: vault
+                    key: address
+              - name: VAULT_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: vault
+                    key: token
+              - name: APP_ENV
+                value: production # TODO
+          restartPolicy: OnFailure
+          imagePullSecrets:
+            - name: osuakatsuki-registry-secret
