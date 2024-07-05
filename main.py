@@ -86,28 +86,39 @@ async def recalc_ranks() -> None:
             async with redis.pipeline() as pipe:
                 for user in users:
                     inactive_days = (start_time - user["latest_pp_awarded"]) / 60 / 60 / 24
+                    country = user["country"].lower()
+
+                    rank_key = f"ripple:{redis_board}:{mode}"
+                    country_rank_key = f"{rank_key}:{country}"
+
+                    # delete all country rankings for a user besides their current country
+                    # regardless of if they are inactive or not
+                    cursor = None
+                    while cursor != 0:
+                        cursor, keys = await pipe.scan(cursor=cursor or 0, match=f"{rank_key}:*")
+
+                        for key in keys:
+                            # ensure that we never delete the key of their own country
+                            # or it may cause a temporary ranking shift
+                            if key.decode() == country_rank_key:
+                                continue
+
+                            await pipe.delete(key)
 
                     if inactive_days < 60 and user["privileges"] & 1 and user["pp"] > 0:
                         await pipe.zadd(
-                            f"ripple:{redis_board}:{mode}",
+                            rank_key,
                             {user["id"]: user["pp"]},
                         )
 
-                        country = user["country"].lower()
                         if country != "xx":
                             await pipe.zadd(
-                                f"ripple:{redis_board}:{mode}:{country}",
+                                country_rank_key,
                                 {user["id"]: user["pp"]},
                             )
                     else:
-                        await pipe.zrem(f"ripple:{redis_board}:{mode}", user["id"])
-
-                        country = user["country"].lower()
-                        if country != "xx":
-                            await pipe.zrem(
-                                f"ripple:{redis_board}:{mode}:{country}",
-                                user["id"],
-                            )
+                        await pipe.zrem(rank_key, user["id"])
+                        await pipe.zrem(country_rank_key, user["id"])
 
                 await pipe.execute()
 
