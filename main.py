@@ -53,6 +53,17 @@ async def disconnect() -> None:
 
 STR_TO_INT_MODE = {"std": 0, "taiko": 1, "ctb": 2, "mania": 3}
 
+async def get_all_country_rankings_keys(rank_key: str) -> list[str]:
+    country_rankings_keys = []
+
+    cursor = None
+    while cursor != 0:
+        cursor, keys = await redis.scan(cursor=cursor or 0, match=f"{rank_key}:*")
+
+        for key in keys:
+            country_rankings_keys.append(key.decode())
+
+    return country_rankings_keys
 
 async def recalc_ranks() -> None:
     print("Recalculating all user ranks")
@@ -82,28 +93,27 @@ async def recalc_ranks() -> None:
                 (STR_TO_INT_MODE[mode] + (rx * 4),),
             )
             users = cast(list[dict[str, Any]], users)
+            
+            rank_key = f"ripple:{redis_board}:{mode}"
+
+            country_ranking_keys = await get_all_country_rankings_keys(rank_key)
 
             async with redis.pipeline() as pipe:
                 for user in users:
                     inactive_days = (start_time - user["latest_pp_awarded"]) / 60 / 60 / 24
                     country = user["country"].lower()
 
-                    rank_key = f"ripple:{redis_board}:{mode}"
                     country_rank_key = f"{rank_key}:{country}"
 
                     # delete all country rankings for a user besides their current country
                     # regardless of if they are inactive or not
-                    cursor = None
-                    while cursor != 0:
-                        cursor, keys = await pipe.scan(cursor=cursor or 0, match=f"{rank_key}:*")
+                    for key in country_ranking_keys:
+                        # ensure that we never delete the key of their own country
+                        # or it may cause a temporary ranking shift
+                        if key == country_rank_key:
+                            continue
 
-                        for key in keys:
-                            # ensure that we never delete the key of their own country
-                            # or it may cause a temporary ranking shift
-                            if key.decode() == country_rank_key:
-                                continue
-
-                            await pipe.delete(key)
+                        await pipe.zrem(key, user["id"])
 
                     if inactive_days < 60 and user["privileges"] & 1 and user["pp"] > 0:
                         await pipe.zadd(
