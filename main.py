@@ -100,8 +100,8 @@ async def recalc_ranks() -> None:
 
             country_ranking_keys = await get_all_country_rankings_keys(rank_key)
 
-            async with redis.pipeline() as pipe:
-                for user in users:
+            for user in users:
+                async with redis.pipeline() as pipe:
                     inactive_days = (
                         (start_time - user["latest_pp_awarded"]) / 60 / 60 / 24
                     )
@@ -134,7 +134,7 @@ async def recalc_ranks() -> None:
                         await pipe.zrem(rank_key, user["id"])
                         await pipe.zrem(user_country_rank_key, user["id"])
 
-                await pipe.execute()
+                    await pipe.execute()
 
     print(f"Recalculated all ranks in {time.time() - start_time:.2f} seconds")
 
