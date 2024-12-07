@@ -323,6 +323,74 @@ async def clear_scores() -> None:
 
     print(f"Deleted all clearable scores in {time.time() - start_time:.2f} seconds")
 
+CHAMPION_BADGE_ID = 67
+FORMER_CHAMPION_BADGE_ID = 66
+
+async def update_champion_badges() -> None:
+    for rx in (0, 1, 2):
+        if rx == 0:
+            redis_board = "leaderboard"
+            modes = ("std", "taiko", "ctb", "mania")
+        elif rx == 1:
+            redis_board = "relaxboard"
+            modes = ("std", "taiko", "ctb")
+        else:  # rx == 2:
+            redis_board = "autoboard"
+            modes = ("std",)
+
+        for mode in modes:
+            mode_int = mode + (4 * rx)
+            rank_key = f"ripple:{redis_board}:{mode}"
+
+            # this is updated in a cron so we need to also check current rank one
+            users_who_peaked_at_rank_one = list(
+                await db.fetchall(
+                    "SELECT DISTINCT user_id FROM user_profile_history WHERE mode = %s AND `rank` = 1",
+                    [mode_int]
+                )
+            )
+
+            current_rank_one_user_id = await redis.zrevrange(rank_key, 0, 0)
+            users_who_peaked_at_rank_one.append({"user_id": current_rank_one_user_id})
+
+            for user in users_who_peaked_at_rank_one:
+                redis_rank = await redis.zrevrank(rank_key, user["user_id"])
+                current_rank = redis_rank + 1 if redis_rank is not None else None
+
+                if current_rank == 1:
+                    await db.execute(
+                        "DELETE FROM user_badges WHERE user = %s AND badge = %s",
+                        [user["user_id"], FORMER_CHAMPION_BADGE_ID],
+                    )
+
+                    # user_badges has no unique key on (user, badge) so we have to check manually :(
+                    existing_former_champion_badge = await db.fetch(
+                        "SELECT 1 FROM user_badges WHERE user = %s AND badge = %s",
+                        [user["user_id"], CHAMPION_BADGE_ID],
+                    )
+
+                    if not existing_former_champion_badge:
+                        await db.execute(
+                            "INSERT INTO user_badges (user, badge) (%s, %s)"
+                            [user["user_id"], CHAMPION_BADGE_ID]
+                        )
+                else:
+                    await db.execute(
+                        "DELETE FROM user_badges WHERE user = %s AND badge = %s",
+                        [user["user_id"], CHAMPION_BADGE_ID],
+                    )
+
+                    # user_badges has no unique key on (user, badge) so we have to check manually :(
+                    existing_former_champion_badge = await db.fetch(
+                        "SELECT 1 FROM user_badges WHERE user = %s AND badge = %s",
+                        [user["user_id"], FORMER_CHAMPION_BADGE_ID],
+                    )
+
+                    if not existing_former_champion_badge:
+                        await db.execute(
+                            "INSERT INTO user_badges (user, badge) (%s, %s)"
+                            [user["user_id"], FORMER_CHAMPION_BADGE_ID]
+                        )
 
 async def main() -> None:
     print("Starting Akatsuki cron")
@@ -335,6 +403,7 @@ async def main() -> None:
     await fix_supporter_badges()
     await update_total_submitted_score_counts()
     await freeze_expired_freeze_timers()
+    await update_champion_badges()
     # await clear_scores() # disabled as of 2022-07-19
 
     await disconnect()
