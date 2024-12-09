@@ -364,12 +364,12 @@ async def update_champion_badges() -> None:
                     )
 
                     # user_badges has no unique key on (user, badge) so we have to check manually :(
-                    existing_former_champion_badge = await db.fetch(
+                    existing_champion_badge = await db.fetch(
                         "SELECT 1 FROM user_badges WHERE user = %s AND badge = %s",
                         [user["user_id"], CHAMPION_BADGE_ID],
                     )
 
-                    if not existing_former_champion_badge:
+                    if not existing_champion_badge:
                         await db.execute(
                             "INSERT INTO user_badges (user, badge) (%s, %s)"
                             [user["user_id"], CHAMPION_BADGE_ID]
