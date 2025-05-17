@@ -320,6 +320,8 @@ async def update_hanayo_country_list() -> None:
         await pipe.delete(COUNTRY_LIST_KEY)
         await pipe.zadd(COUNTRY_LIST_KEY, {country["country"]: country["user_count"] for country in country_list})
 
+        await pipe.execute()
+
     print(f"Updated hanayo country list in {time.time() - start_time:.2f} seconds")
 
 
