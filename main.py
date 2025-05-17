@@ -317,7 +317,7 @@ async def update_hanayo_country_list() -> None:
         """
     )
     async with redis.pipeline() as pipe:
-        await pipe.del(COUNTRY_LIST_KEY)
+        await pipe.delete(COUNTRY_LIST_KEY)
         await pipe.zadd(COUNTRY_LIST_KEY, {country["country"]: country["user_count"] for country in country_list})
 
     print(f"Updated hanayo country list in {time.time() - start_time:.2f} seconds")
