@@ -298,6 +298,31 @@ async def clear_scores() -> None:
     print(f"Deleted all clearable scores in {time.time() - start_time:.2f} seconds")
 
 
+async def update_hanayo_country_list() -> None:
+    COUNTRY_LIST_KEY = "hanayo:country_list"
+    
+    print("Updating hanayo country list")
+    start_time = int(time.time())
+
+    country_list = await db.fetchall(
+        """
+        SELECT country, COUNT(*) AS user_count
+          FROM users 
+          INNER JOIN user_stats ON user_stats.user_id = id
+         WHERE LENGTH(country) = 2
+            AND country != 'XX'
+            AND PRIVILEGES & 1
+            AND latest_pp_awarded > (UNIX_TIMESTAMP() - 60 * 24 * 60 * 60)
+        GROUP BY country
+        """
+    )
+    async with redis.pipeline() as pipe:
+        await pipe.del(COUNTRY_LIST_KEY)
+        await pipe.zadd(COUNTRY_LIST_KEY, {country["country"]: country["user_count"] for country in country_list})
+
+    print(f"Updated hanayo country list in {time.time() - start_time:.2f} seconds")
+
+
 async def main() -> None:
     print("Starting Akatsuki cron")
 
@@ -306,6 +331,7 @@ async def main() -> None:
     await connect()
 
     await recalc_ranks()
+    await update_hanayo_country_list()
     await fix_supporter_badges()
     await update_total_submitted_score_counts()
     await freeze_expired_freeze_timers()
