@@ -325,6 +325,45 @@ async def update_hanayo_country_list() -> None:
     print(f"Updated hanayo country list in {time.time() - start_time:.2f} seconds")
 
 
+async def update_top_plays() -> None:
+    for table, whitelist_int in (
+        ("scores", 1),
+        ("scores_relax", 2),
+        ("scores_ap", 2),
+    ):
+        query = f"""
+            SELECT users.username,
+                   users.id,
+                   ROUND(s.pp) AS pp
+              FROM {table} s
+         LEFT JOIN beatmaps b
+             USING (beatmap_md5)
+         LEFT JOIN users ON users.id = s.userid
+             WHERE s.play_mode = 0
+               AND s.completed = 3
+               AND b.ranked = 2
+               AND users.privileges & 1
+               AND users.whitelist & {whitelist_int}
+          ORDER BY s.pp DESC
+             LIMIT 1
+            """
+
+        result = await db.fetch(query)
+        async with redis.pipeline() as pipe:
+            if not result:
+                await redis.set(f"akatsuki:top:{table}:pp", 0)
+                await redis.set(f"akatsuki:top:{table}:id", 0)
+                await redis.set(f"akatsuki:top:{table}:name", "")
+            else:
+                await redis.set(f"akatsuki:top:{table}:pp", int(result["pp"]))
+                await redis.set(f"akatsuki:top:{table}:id", result["id"])
+                await redis.set(f"akatsuki:top:{table}:name", result["username"])
+
+            await pipe.execute()
+
+    print(f"Updated top play cache!")
+
+
 async def main() -> None:
     print("Starting Akatsuki cron")
 
@@ -337,6 +376,7 @@ async def main() -> None:
     await fix_supporter_badges()
     await update_total_submitted_score_counts()
     await freeze_expired_freeze_timers()
+    await update_top_plays()
     # await clear_scores() # disabled as of 2022-07-19
 
     await disconnect()
