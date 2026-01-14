@@ -54,6 +54,9 @@ async def disconnect() -> None:
 STR_TO_INT_MODE = {"std": 0, "taiko": 1, "ctb": 2, "mania": 3}
 
 
+REDIS_BATCH_SIZE = 1000
+
+
 async def recalc_ranks() -> None:
     print("Recalculating all user ranks")
 
@@ -85,28 +88,30 @@ async def recalc_ranks() -> None:
 
             rank_key = f"ripple:{redis_board}:{mode}"
 
-            for user in users:
+            for i in range(0, len(users), REDIS_BATCH_SIZE):
+                batch = users[i : i + REDIS_BATCH_SIZE]
                 async with redis.pipeline() as pipe:
-                    inactive_days = (
-                        (start_time - user["latest_pp_awarded"]) / 60 / 60 / 24
-                    )
-                    country = user["country"].lower()
-
-                    user_country_rank_key = f"{rank_key}:{country}"
-                    if inactive_days < 60 and user["privileges"] & 1 and user["pp"] > 0:
-                        await pipe.zadd(
-                            rank_key,
-                            {user["id"]: user["pp"]},
+                    for user in batch:
+                        inactive_days = (
+                            (start_time - user["latest_pp_awarded"]) / 60 / 60 / 24
                         )
+                        country = user["country"].lower()
 
-                        if country != "xx":
+                        user_country_rank_key = f"{rank_key}:{country}"
+                        if inactive_days < 60 and user["privileges"] & 1 and user["pp"] > 0:
                             await pipe.zadd(
-                                user_country_rank_key,
+                                rank_key,
                                 {user["id"]: user["pp"]},
                             )
-                    else:
-                        await pipe.zrem(rank_key, user["id"])
-                        await pipe.zrem(user_country_rank_key, user["id"])
+
+                            if country != "xx":
+                                await pipe.zadd(
+                                    user_country_rank_key,
+                                    {user["id"]: user["pp"]},
+                                )
+                        else:
+                            await pipe.zrem(rank_key, user["id"])
+                            await pipe.zrem(user_country_rank_key, user["id"])
 
                     await pipe.execute()
 
