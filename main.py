@@ -1,5 +1,6 @@
 #!/usr/bin/env python3.9
 import asyncio
+import json
 import time
 from typing import Any
 from typing import cast
@@ -371,6 +372,106 @@ async def update_top_plays() -> None:
     print(f"Updated top play cache!")
 
 
+async def update_homepage_cache() -> None:
+    """Update cached data for the homepage activity feed and stats."""
+    print("Updating homepage cache")
+    start_time = time.time()
+
+    # Recent first places (relax mode - most popular)
+    first_places = await db.fetchall(
+        """
+        SELECT sf.scoreid, sf.userid, u.username, u.country,
+               b.song_name, b.beatmap_id, b.beatmapset_id,
+               ROUND(s.pp) as pp, s.time as score_time
+        FROM scores_first sf
+        INNER JOIN users u ON u.id = sf.userid
+        INNER JOIN beatmaps b ON b.beatmap_md5 = sf.beatmap_md5
+        INNER JOIN scores_relax s ON s.id = sf.scoreid
+        WHERE sf.rx = 1 AND u.privileges & 1
+        ORDER BY s.time DESC
+        LIMIT 10
+        """
+    )
+    await redis.set(
+        "akatsuki:recent_first_places",
+        json.dumps(first_places, default=str),
+    )
+
+    # High PP plays (>800pp, last 24h, relax mode)
+    high_pp = await db.fetchall(
+        """
+        SELECT s.id, s.userid, ROUND(s.pp) as pp, s.time,
+               u.username, u.country,
+               b.song_name, b.beatmap_id, b.beatmapset_id
+        FROM scores_relax s
+        INNER JOIN users u ON u.id = s.userid
+        INNER JOIN beatmaps b ON b.beatmap_md5 = s.beatmap_md5
+        WHERE s.pp >= 800 AND s.completed = 3
+          AND s.time > UNIX_TIMESTAMP() - 86400
+          AND u.privileges & 1 AND b.ranked IN (2, 3)
+        ORDER BY s.time DESC
+        LIMIT 10
+        """
+    )
+    await redis.set(
+        "akatsuki:high_pp_plays_24h",
+        json.dumps(high_pp, default=str),
+    )
+
+    # Trending beatmaps (most played this week)
+    trending = await db.fetchall(
+        """
+        SELECT b.beatmap_id, b.beatmapset_id, b.song_name, COUNT(*) as play_count
+        FROM (
+            SELECT beatmap_md5 FROM scores WHERE time > UNIX_TIMESTAMP() - 604800
+            UNION ALL
+            SELECT beatmap_md5 FROM scores_relax WHERE time > UNIX_TIMESTAMP() - 604800
+        ) recent
+        INNER JOIN beatmaps b ON b.beatmap_md5 = recent.beatmap_md5
+        WHERE b.ranked IN (2, 3)
+        GROUP BY b.beatmap_id
+        ORDER BY play_count DESC
+        LIMIT 10
+        """
+    )
+    await redis.set(
+        "akatsuki:trending_beatmaps",
+        json.dumps(trending, default=str),
+    )
+
+    # Simple counts
+    user_count = await db.fetch(
+        "SELECT COUNT(*) as cnt FROM users WHERE privileges & 1"
+    )
+    await redis.set("akatsuki:registered_users", str(user_count["cnt"]))
+
+    beatmap_count = await db.fetch(
+        "SELECT COUNT(*) as cnt FROM beatmaps WHERE ranked IN (2, 3)"
+    )
+    await redis.set("akatsuki:ranked_beatmaps", str(beatmap_count["cnt"]))
+
+    playtime = await db.fetch("SELECT SUM(playtime) as total FROM user_stats")
+    years = int(playtime["total"]) // (60 * 60 * 24 * 365)
+    await redis.set("akatsuki:total_playtime_years", str(years))
+
+    # New registrations (last 24h)
+    new_users = await db.fetchall(
+        """
+        SELECT id, username, country, register_datetime
+        FROM users WHERE privileges & 1
+          AND register_datetime > UNIX_TIMESTAMP() - 86400
+        ORDER BY register_datetime DESC
+        LIMIT 10
+        """
+    )
+    await redis.set(
+        "akatsuki:new_registrations_24h",
+        json.dumps(new_users, default=str),
+    )
+
+    print(f"Updated homepage cache in {time.time() - start_time:.2f} seconds")
+
+
 async def main() -> None:
     print("Starting Akatsuki cron")
 
@@ -384,6 +485,7 @@ async def main() -> None:
     await update_total_submitted_score_counts()
     await freeze_expired_freeze_timers()
     await update_top_plays()
+    await update_homepage_cache()
     # await clear_scores() # disabled as of 2022-07-19
 
     await disconnect()
