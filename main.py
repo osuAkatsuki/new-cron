@@ -164,17 +164,6 @@ async def fix_supporter_badges() -> None:
     print(f"Fixed all supporter badges in {time.time() - start_time:.2f} seconds")
 
 
-def magnitude_fmt(val: float) -> str:
-    # NOTE: this rounds & uses floats which leads to some inaccuracy
-    for suffix in ["", "k", "m", "b", "t"]:
-        if val < 1000:
-            return f"{val:.2f}{suffix}"
-
-        val /= 1000
-
-    raise RuntimeError("magnitude_fmt only supports up to trillions")
-
-
 async def update_total_submitted_score_counts() -> None:
     print("Updating total submitted score counts")
 
@@ -195,7 +184,7 @@ async def update_total_submitted_score_counts() -> None:
 
     await redis.set(
         "ripple:submitted_scores",
-        magnitude_fmt(row["AUTO_INCREMENT"] - 500_000_000),
+        str(row["AUTO_INCREMENT"] - 500_000_000),
     )
 
     # scores_relax
@@ -213,7 +202,7 @@ async def update_total_submitted_score_counts() -> None:
 
     await redis.set(
         "ripple:submitted_scores_relax",
-        magnitude_fmt(row["AUTO_INCREMENT"]),
+        str(row["AUTO_INCREMENT"]),
     )
 
     # scores_ap
@@ -231,7 +220,7 @@ async def update_total_submitted_score_counts() -> None:
 
     await redis.set(
         "ripple:submitted_scores_ap",
-        magnitude_fmt(row["AUTO_INCREMENT"] - 6_148_914_691_236_517_204),
+        str(row["AUTO_INCREMENT"] - 6_148_914_691_236_517_204),
     )
 
     print(
