@@ -2,13 +2,12 @@
 import asyncio
 import json
 import time
-from typing import Any
-from typing import cast
+from typing import Any, cast
 
 import redis.asyncio as aioredis
 import uvloop
 from aiohttp import ClientSession
-from cmyui.discord import Webhook, Embed
+from cmyui.discord import Embed, Webhook
 from cmyui.mysql import AsyncSQLPool
 
 import settings
@@ -25,7 +24,7 @@ async def connect() -> None:
             "password": settings.DB_PASS,
             "user": settings.DB_USER,
             "port": settings.DB_PORT,
-        }
+        },
     )
 
     global redis
@@ -99,7 +98,11 @@ async def recalc_ranks() -> None:
                         country = user["country"].lower()
 
                         user_country_rank_key = f"{rank_key}:{country}"
-                        if inactive_days < 60 and user["privileges"] & 1 and user["pp"] > 0:
+                        if (
+                            inactive_days < 60
+                            and user["privileges"] & 1
+                            and user["pp"] > 0
+                        ):
                             await pipe.zadd(
                                 rank_key,
                                 {user["id"]: user["pp"]},
@@ -178,7 +181,7 @@ async def update_total_submitted_score_counts() -> None:
          WHERE TABLE_SCHEMA = 'akatsuki'
            AND TABLE_NAME = 'scores'
       ORDER BY AUTO_INCREMENT DESC
-        """
+        """,
     )
     if row is None:
         raise Exception("Couldn't fetch auto_increment for scores")
@@ -196,7 +199,7 @@ async def update_total_submitted_score_counts() -> None:
          WHERE TABLE_SCHEMA = 'akatsuki'
            AND TABLE_NAME = 'scores_relax'
       ORDER BY AUTO_INCREMENT DESC
-        """
+        """,
     )
     if row is None:
         raise Exception("Couldn't fetch auto_increment for scores_relax")
@@ -214,7 +217,7 @@ async def update_total_submitted_score_counts() -> None:
          WHERE TABLE_SCHEMA = 'akatsuki'
            AND TABLE_NAME = 'scores_ap'
       ORDER BY AUTO_INCREMENT DESC
-        """
+        """,
     )
     if row is None:
         raise Exception("Couldn't fetch auto_increment for scores_ap")
@@ -225,7 +228,7 @@ async def update_total_submitted_score_counts() -> None:
     )
 
     print(
-        f"Updated total submitted score counts in {time.time() - start_time:.2f} seconds"
+        f"Updated total submitted score counts in {time.time() - start_time:.2f} seconds",
     )
 
 
@@ -243,7 +246,7 @@ async def freeze_expired_freeze_timers() -> None:
     print("Freezing users with expired freeze timers")
 
     expired_users = await db.fetchall(
-        "select id, username, privileges, frozen, country from users where frozen != 0 and frozen != 1"
+        "select id, username, privileges, frozen, country from users where frozen != 0 and frozen != 1",
     )
 
     start_time = int(time.time())
@@ -300,7 +303,7 @@ async def clear_scores() -> None:
 
     for table in ("scores", "scores_relax"):
         await db.execute(
-            f"delete from {table} where completed < 3 and time < UNIX_TIMESTAMP(NOW() - INTERVAL 24 HOUR)"
+            f"delete from {table} where completed < 3 and time < UNIX_TIMESTAMP(NOW() - INTERVAL 24 HOUR)",
         )
 
     print(f"Deleted all clearable scores in {time.time() - start_time:.2f} seconds")
@@ -308,25 +311,28 @@ async def clear_scores() -> None:
 
 async def update_hanayo_country_list() -> None:
     COUNTRY_LIST_KEY = "hanayo:country_list"
-    
+
     print("Updating hanayo country list")
     start_time = int(time.time())
 
     country_list = await db.fetchall(
         """
         SELECT country, COUNT(*) AS user_count
-          FROM users 
+          FROM users
           INNER JOIN user_stats ON user_stats.user_id = id
          WHERE LENGTH(country) = 2
             AND country != 'XX'
             AND PRIVILEGES & 1
             AND latest_pp_awarded > (UNIX_TIMESTAMP() - 60 * 24 * 60 * 60)
         GROUP BY country
-        """
+        """,
     )
     async with redis.pipeline() as pipe:
         await pipe.delete(COUNTRY_LIST_KEY)
-        await pipe.zadd(COUNTRY_LIST_KEY, {country["country"]: country["user_count"] for country in country_list})
+        await pipe.zadd(
+            COUNTRY_LIST_KEY,
+            {country["country"]: country["user_count"] for country in country_list},
+        )
 
         await pipe.execute()
 
