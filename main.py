@@ -237,11 +237,18 @@ async def update_total_submitted_score_counts() -> None:
 FREEZE_MESSAGE = "has been automatically restricted due to a pending freeze."
 
 
+BOARD_MODES = {
+    "leaderboard": ("std", "taiko", "ctb", "mania"),
+    "relaxboard": ("std", "taiko", "ctb"),
+    "autoboard": ("std",),
+}
+
+
 async def freeze_expired_freeze_timers() -> None:
     print("Freezing users with expired freeze timers")
 
     expired_users = await db.fetchall(
-        "select id, username, privileges, frozen from users where frozen != 0 and frozen != 1"
+        "select id, username, privileges, frozen, country from users where frozen != 0 and frozen != 1"
     )
 
     start_time = int(time.time())
@@ -261,8 +268,14 @@ async def freeze_expired_freeze_timers() -> None:
 
         await redis.publish("peppy:ban", user["id"])
 
-        for board in ("leaderboard", "relaxboard"):
-            await redis.zrem(f"ripple:{board}:*:*", user["id"])
+        country = user["country"].lower()
+        async with redis.pipeline() as pipe:
+            for board, modes in BOARD_MODES.items():
+                for mode in modes:
+                    await pipe.zrem(f"ripple:{board}:{mode}", user["id"])
+                    if country != "xx":
+                        await pipe.zrem(f"ripple:{board}:{mode}:{country}", user["id"])
+            await pipe.execute()
 
         await db.execute(
             "insert into rap_logs (id, userid, text, datetime, through) values (null, %s, %s, UNIX_TIMESTAMP(), %s)",
