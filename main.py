@@ -2,6 +2,7 @@
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 from typing import Any, cast
 
 import redis.asyncio as aioredis
@@ -14,6 +15,23 @@ import settings
 
 db = AsyncSQLPool()
 redis: "aioredis.Redis"
+
+
+def unix_to_iso(timestamp: int) -> str:
+    """Convert Unix timestamp to ISO 8601 format string."""
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+
+
+def convert_timestamps_to_iso(data: list[dict]) -> list[dict]:
+    """Convert Unix timestamp fields to ISO format in a list of dictionaries."""
+    for item in data:
+        # Convert score_time (for first places)
+        if "score_time" in item and isinstance(item["score_time"], int):
+            item["score_time"] = unix_to_iso(item["score_time"])
+        # Convert time (for high PP plays)
+        if "time" in item and isinstance(item["time"], int):
+            item["time"] = unix_to_iso(item["time"])
+    return data
 
 
 async def connect() -> None:
@@ -407,7 +425,8 @@ async def update_homepage_cache() -> None:
             f"""
             SELECT sf.scoreid, sf.userid, u.username, u.country,
                    b.song_name, b.beatmap_id, b.beatmapset_id,
-                   ROUND(s.pp) as pp, s.time as score_time
+                   ROUND(s.pp) as pp, s.time as score_time,
+                   s.mods, s.accuracy
             FROM scores_first sf
             INNER JOIN users u ON u.id = sf.userid
             INNER JOIN beatmaps b ON b.beatmap_md5 = sf.beatmap_md5
@@ -418,6 +437,8 @@ async def update_homepage_cache() -> None:
             """,
             (rx, play_mode),
         )
+        # Convert Unix timestamps to ISO format
+        first_places = convert_timestamps_to_iso(first_places)
         await redis.set(
             f"akatsuki:first_places:{combined_mode}",
             json.dumps(first_places, default=str),
@@ -428,7 +449,8 @@ async def update_homepage_cache() -> None:
             f"""
             SELECT s.id, s.userid, ROUND(s.pp) as pp, s.time,
                    u.username, u.country,
-                   b.song_name, b.beatmap_id, b.beatmapset_id
+                   b.song_name, b.beatmap_id, b.beatmapset_id,
+                   s.mods, s.accuracy
             FROM {scores_table} s
             INNER JOIN users u ON u.id = s.userid
             INNER JOIN beatmaps b ON b.beatmap_md5 = s.beatmap_md5
@@ -440,6 +462,8 @@ async def update_homepage_cache() -> None:
             """,
             (pp_threshold, play_mode),
         )
+        # Convert Unix timestamps to ISO format
+        high_pp = convert_timestamps_to_iso(high_pp)
         await redis.set(
             f"akatsuki:high_pp:{combined_mode}",
             json.dumps(high_pp, default=str),
