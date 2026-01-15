@@ -394,11 +394,11 @@ async def update_homepage_cache() -> None:
         (0, 0, 0, "scores", 700),  # vn std
         (1, 0, 1, "scores", 700),  # vn taiko
         (2, 0, 2, "scores", 700),  # vn ctb
-        (3, 0, 3, "scores", 1200),  # vn mania
-        (4, 1, 0, "scores_relax", 1600),  # rx std
-        (5, 1, 1, "scores_relax", 1200),  # rx taiko
-        (6, 1, 2, "scores_relax", 1000),  # rx ctb
-        (8, 2, 0, "scores_ap", 650),  # ap std
+        (3, 0, 3, "scores", 600),  # vn mania
+        (4, 1, 0, "scores_relax", 1300),  # rx std
+        (5, 1, 1, "scores_relax", 800),  # rx taiko
+        (6, 1, 2, "scores_relax", 700),  # rx ctb
+        (8, 2, 0, "scores_ap", 500),  # ap std
     ]
 
     for combined_mode, rx, play_mode, scores_table, pp_threshold in mode_configs:
