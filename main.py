@@ -388,16 +388,17 @@ async def update_homepage_cache() -> None:
     # Vanilla (rx=0): modes 0-3 (std, taiko, ctb, mania)
     # Relax (rx=1): modes 4-6 (std, taiko, ctb - no mania)
     # Autopilot (rx=2): mode 8 (std only)
+    # PP thresholds for high PP plays display
     mode_configs = [
         # (combined_mode, rx, play_mode, scores_table, pp_threshold)
-        (0, 0, 0, "scores", 700),       # vn std
-        (1, 0, 1, "scores", 500),       # vn taiko
-        (2, 0, 2, "scores", 500),       # vn ctb
-        (3, 0, 3, "scores", 700),       # vn mania
-        (4, 1, 0, "scores_relax", 800), # rx std
-        (5, 1, 1, "scores_relax", 600), # rx taiko
-        (6, 1, 2, "scores_relax", 600), # rx ctb
-        (8, 2, 0, "scores_ap", 600),    # ap std
+        (0, 0, 0, "scores", 700),  # vn std
+        (1, 0, 1, "scores", 700),  # vn taiko
+        (2, 0, 2, "scores", 700),  # vn ctb
+        (3, 0, 3, "scores", 1200),  # vn mania
+        (4, 1, 0, "scores_relax", 1600),  # rx std
+        (5, 1, 1, "scores_relax", 1200),  # rx taiko
+        (6, 1, 2, "scores_relax", 1000),  # rx ctb
+        (8, 2, 0, "scores_ap", 650),  # ap std
     ]
 
     for combined_mode, rx, play_mode, scores_table, pp_threshold in mode_configs:
@@ -466,7 +467,7 @@ async def update_homepage_cache() -> None:
         GROUP BY b.beatmap_id
         ORDER BY play_count DESC
         LIMIT 10
-        """
+        """,
     )
     await redis.set(
         "akatsuki:trending_beatmaps",
@@ -475,12 +476,12 @@ async def update_homepage_cache() -> None:
 
     # Simple counts
     user_count = await db.fetch(
-        "SELECT COUNT(*) as cnt FROM users WHERE privileges & 1"
+        "SELECT COUNT(*) as cnt FROM users WHERE privileges & 1",
     )
     await redis.set("akatsuki:registered_users", str(user_count["cnt"]))
 
     beatmap_count = await db.fetch(
-        "SELECT COUNT(*) as cnt FROM beatmaps WHERE ranked IN (2, 3)"
+        "SELECT COUNT(*) as cnt FROM beatmaps WHERE ranked IN (2, 3)",
     )
     await redis.set("akatsuki:ranked_beatmaps", str(beatmap_count["cnt"]))
 
@@ -496,7 +497,7 @@ async def update_homepage_cache() -> None:
           AND register_datetime > UNIX_TIMESTAMP() - 86400
         ORDER BY register_datetime DESC
         LIMIT 10
-        """
+        """,
     )
     await redis.set(
         "akatsuki:new_registrations_24h",
