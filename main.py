@@ -377,46 +377,74 @@ async def update_homepage_cache() -> None:
     print("Updating homepage cache")
     start_time = time.time()
 
-    # Recent first places (relax mode - most popular)
-    first_places = await db.fetchall(
-        """
-        SELECT sf.scoreid, sf.userid, u.username, u.country,
-               b.song_name, b.beatmap_id, b.beatmapset_id,
-               ROUND(s.pp) as pp, s.time as score_time
-        FROM scores_first sf
-        INNER JOIN users u ON u.id = sf.userid
-        INNER JOIN beatmaps b ON b.beatmap_md5 = sf.beatmap_md5
-        INNER JOIN scores_relax s ON s.id = sf.scoreid
-        WHERE sf.rx = 1 AND u.privileges & 1
-        ORDER BY s.time DESC
-        LIMIT 10
-        """
-    )
-    await redis.set(
-        "akatsuki:recent_first_places",
-        json.dumps(first_places, default=str),
-    )
+    # Mode configurations:
+    # Combined mode = base_mode + (rx * 4), except ap which is always 8
+    # Vanilla (rx=0): modes 0-3 (std, taiko, ctb, mania)
+    # Relax (rx=1): modes 4-6 (std, taiko, ctb - no mania)
+    # Autopilot (rx=2): mode 8 (std only)
+    mode_configs = [
+        # (combined_mode, rx, play_mode, scores_table, pp_threshold)
+        (0, 0, 0, "scores", 700),       # vn std
+        (1, 0, 1, "scores", 500),       # vn taiko
+        (2, 0, 2, "scores", 500),       # vn ctb
+        (3, 0, 3, "scores", 700),       # vn mania
+        (4, 1, 0, "scores_relax", 800), # rx std
+        (5, 1, 1, "scores_relax", 600), # rx taiko
+        (6, 1, 2, "scores_relax", 600), # rx ctb
+        (8, 2, 0, "scores_ap", 600),    # ap std
+    ]
 
-    # High PP plays (>800pp, last 24h, relax mode)
-    high_pp = await db.fetchall(
-        """
-        SELECT s.id, s.userid, ROUND(s.pp) as pp, s.time,
-               u.username, u.country,
-               b.song_name, b.beatmap_id, b.beatmapset_id
-        FROM scores_relax s
-        INNER JOIN users u ON u.id = s.userid
-        INNER JOIN beatmaps b ON b.beatmap_md5 = s.beatmap_md5
-        WHERE s.pp >= 800 AND s.completed = 3
-          AND s.time > UNIX_TIMESTAMP() - 86400
-          AND u.privileges & 1 AND b.ranked IN (2, 3)
-        ORDER BY s.time DESC
-        LIMIT 10
-        """
-    )
-    await redis.set(
-        "akatsuki:high_pp_plays_24h",
-        json.dumps(high_pp, default=str),
-    )
+    for combined_mode, rx, play_mode, scores_table, pp_threshold in mode_configs:
+        # Recent first places for this mode
+        first_places = await db.fetchall(
+            f"""
+            SELECT sf.scoreid, sf.userid, u.username, u.country,
+                   b.song_name, b.beatmap_id, b.beatmapset_id,
+                   ROUND(s.pp) as pp, s.time as score_time
+            FROM scores_first sf
+            INNER JOIN users u ON u.id = sf.userid
+            INNER JOIN beatmaps b ON b.beatmap_md5 = sf.beatmap_md5
+            INNER JOIN {scores_table} s ON s.id = sf.scoreid
+            WHERE sf.rx = %s AND sf.mode = %s AND u.privileges & 1
+            ORDER BY s.time DESC
+            LIMIT 10
+            """,
+            (rx, play_mode),
+        )
+        await redis.set(
+            f"akatsuki:first_places:{combined_mode}",
+            json.dumps(first_places, default=str),
+        )
+
+        # High PP plays for this mode (last 24h)
+        high_pp = await db.fetchall(
+            f"""
+            SELECT s.id, s.userid, ROUND(s.pp) as pp, s.time,
+                   u.username, u.country,
+                   b.song_name, b.beatmap_id, b.beatmapset_id
+            FROM {scores_table} s
+            INNER JOIN users u ON u.id = s.userid
+            INNER JOIN beatmaps b ON b.beatmap_md5 = s.beatmap_md5
+            WHERE s.pp >= %s AND s.completed = 3 AND s.play_mode = %s
+              AND s.time > UNIX_TIMESTAMP() - 86400
+              AND u.privileges & 1 AND b.ranked IN (2, 3)
+            ORDER BY s.time DESC
+            LIMIT 10
+            """,
+            (pp_threshold, play_mode),
+        )
+        await redis.set(
+            f"akatsuki:high_pp:{combined_mode}",
+            json.dumps(high_pp, default=str),
+        )
+
+    # Default keys (vn std - mode 0) for initial page load via templates
+    vn_std_first_places = await redis.get("akatsuki:first_places:0")
+    vn_std_high_pp = await redis.get("akatsuki:high_pp:0")
+    if vn_std_first_places:
+        await redis.set("akatsuki:recent_first_places", vn_std_first_places)
+    if vn_std_high_pp:
+        await redis.set("akatsuki:high_pp_plays_24h", vn_std_high_pp)
 
     # Trending beatmaps (most played this week)
     trending = await db.fetchall(
