@@ -291,7 +291,11 @@ async def freeze_expired_freeze_timers() -> None:
     print("Freezing users with expired freeze timers")
 
     expired_users = await db.fetch_all(
-        "select id, username, privileges, frozen, country from users where frozen != 0 and frozen != 1",
+        """
+        SELECT id, username, privileges, frozen, country
+        FROM users
+        WHERE frozen NOT IN (0, 1)
+        """,
     )
 
     start_time = int(time.time())
@@ -363,7 +367,7 @@ async def update_hanayo_country_list() -> None:
           INNER JOIN user_stats ON user_stats.user_id = id
          WHERE LENGTH(country) = 2
             AND country != 'XX'
-            AND PRIVILEGES & 1
+            AND privileges & 1
             AND latest_pp_awarded > (UNIX_TIMESTAMP() - 60 * 24 * 60 * 60)
         GROUP BY country
         """,
