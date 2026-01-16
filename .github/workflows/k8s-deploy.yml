@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   production-deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vpc]
 
     steps:
       - name: Check out latest commit
@@ -45,6 +45,7 @@ jobs:
             mkdir -p $HOME/.kube
             echo "${{ secrets.KUBECONFIG }}" > $HOME/.kube/config
             sudo chown $(id -u):$(id -g) $HOME/.kube/config
+            chmod 700 $HOME/.kube/config
 
       - name: Deploy cronjob to production cluster
         run: |
