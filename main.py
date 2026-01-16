@@ -458,11 +458,13 @@ async def update_homepage_cache() -> None:
             INNER JOIN users u ON u.id = sf.userid
             INNER JOIN beatmaps b ON b.beatmap_md5 = sf.beatmap_md5
             INNER JOIN {scores_table} s ON s.id = sf.scoreid
-            WHERE sf.rx = :rx AND sf.mode = :play_mode AND u.privileges & 1
+            WHERE sf.rx = :rx
+              AND sf.mode = :mode
+              AND u.privileges & 1
             ORDER BY s.time DESC
             LIMIT 10
             """,
-            {"rx": rx, "play_mode": play_mode},
+            {"rx": rx, "mode": play_mode},
         )
         # Convert Unix timestamps to ISO format
         first_places = convert_timestamps_to_iso(first_places)
@@ -510,13 +512,22 @@ async def update_homepage_cache() -> None:
     # Trending beatmaps (most played this week)
     trending = await db.fetch_all(
         """
-        SELECT b.beatmap_id, b.beatmapset_id, b.song_name, COUNT(*) as play_count
+        SELECT b.beatmap_id,
+               b.beatmapset_id,
+               b.song_name,
+               COUNT(*) AS play_count
         FROM (
-            SELECT beatmap_md5 FROM scores WHERE time > UNIX_TIMESTAMP() - 604800
+            SELECT beatmap_md5
+            FROM scores
+            WHERE time > UNIX_TIMESTAMP() - 604800
             UNION ALL
-            SELECT beatmap_md5 FROM scores_relax WHERE time > UNIX_TIMESTAMP() - 604800
+            SELECT beatmap_md5
+            FROM scores_relax
+            WHERE time > UNIX_TIMESTAMP() - 604800
             UNION ALL
-            SELECT beatmap_md5 FROM scores_ap WHERE time > UNIX_TIMESTAMP() - 604800
+            SELECT beatmap_md5
+            FROM scores_ap
+            WHERE time > UNIX_TIMESTAMP() - 604800
         ) recent
         INNER JOIN beatmaps b ON b.beatmap_md5 = recent.beatmap_md5
         WHERE b.ranked IN (2, 3)
