@@ -490,7 +490,7 @@ async def update_homepage_cache() -> None:
         SELECT COUNT(*) AS cnt
         FROM users
         WHERE privileges & 1
-        """
+        """,
     )
     await redis.set("akatsuki:registered_users", str(user_count["cnt"]))
 
@@ -499,7 +499,7 @@ async def update_homepage_cache() -> None:
         SELECT COUNT(*) AS cnt
         FROM beatmaps
         WHERE ranked IN (2, 3)
-        """
+        """,
     )
     await redis.set("akatsuki:ranked_beatmaps", str(beatmap_count["cnt"]))
 
@@ -509,7 +509,7 @@ async def update_homepage_cache() -> None:
         FROM user_stats
         INNER JOIN users ON users.id = user_stats.user_id
         WHERE users.privileges & 1
-        """
+        """,
     )
     years = int(playtime["total_playtime"]) // (60 * 60 * 24 * 365)
     await redis.set("akatsuki:total_playtime_years", str(years))
@@ -530,8 +530,10 @@ async def update_homepage_cache() -> None:
 
     print(f"Updated homepage cache in {time.time() - start_time:.2f} seconds")
 
+
 CHAMPION_BADGE_ID = 67
 FORMER_CHAMPION_BADGE_ID = 66
+
 
 async def update_champion_badges() -> None:
     for rx in (0, 1, 2):
@@ -553,8 +555,8 @@ async def update_champion_badges() -> None:
             users_who_peaked_at_rank_one = list(
                 await db.fetchall(
                     "SELECT DISTINCT user_id FROM user_profile_history WHERE mode = %s AND `rank` = 1",
-                    [mode_int]
-                )
+                    [mode_int],
+                ),
             )
 
             current_rank_one_user_id = await redis.zrevrange(rank_key, 0, 0)
@@ -578,8 +580,9 @@ async def update_champion_badges() -> None:
 
                     if not existing_champion_badge:
                         await db.execute(
-                            "INSERT INTO user_badges (user, badge) (%s, %s)"
-                            [user["user_id"], CHAMPION_BADGE_ID]
+                            "INSERT INTO user_badges (user, badge) (%s, %s)"[
+                                user["user_id"], CHAMPION_BADGE_ID,
+                            ],
                         )
                 else:
                     await db.execute(
@@ -595,9 +598,11 @@ async def update_champion_badges() -> None:
 
                     if not existing_former_champion_badge:
                         await db.execute(
-                            "INSERT INTO user_badges (user, badge) (%s, %s)"
-                            [user["user_id"], FORMER_CHAMPION_BADGE_ID]
+                            "INSERT INTO user_badges (user, badge) (%s, %s)"[
+                                user["user_id"], FORMER_CHAMPION_BADGE_ID,
+                            ],
                         )
+
 
 async def main() -> None:
     print("Starting Akatsuki cron")
