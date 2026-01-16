@@ -314,19 +314,6 @@ async def freeze_expired_freeze_timers() -> None:
     print(f"Froze all users in {time.time() - start_time:.2f} seconds")
 
 
-async def clear_scores() -> None:
-    print("Deleting clearable scores")
-
-    start_time = int(time.time())
-
-    for table in ("scores", "scores_relax"):
-        await db.execute(
-            f"delete from {table} where completed < 3 and time < UNIX_TIMESTAMP(NOW() - INTERVAL 24 HOUR)",
-        )
-
-    print(f"Deleted all clearable scores in {time.time() - start_time:.2f} seconds")
-
-
 async def update_hanayo_country_list() -> None:
     COUNTRY_LIST_KEY = "hanayo:country_list"
 
@@ -485,6 +472,8 @@ async def update_homepage_cache() -> None:
             SELECT beatmap_md5 FROM scores WHERE time > UNIX_TIMESTAMP() - 604800
             UNION ALL
             SELECT beatmap_md5 FROM scores_relax WHERE time > UNIX_TIMESTAMP() - 604800
+            UNION ALL
+            SELECT beatmap_md5 FROM scores_ap WHERE time > UNIX_TIMESTAMP() - 604800
         ) recent
         INNER JOIN beatmaps b ON b.beatmap_md5 = recent.beatmap_md5
         WHERE b.ranked IN (2, 3)
@@ -514,18 +503,17 @@ async def update_homepage_cache() -> None:
     await redis.set("akatsuki:total_playtime_years", str(years))
 
     # New registrations (last 24h)
-    new_users = await db.fetchall(
+    new_users = await db.fetch(
         """
-        SELECT id, username, country, register_datetime
-        FROM users WHERE privileges & 1
-          AND register_datetime > UNIX_TIMESTAMP() - 86400
-        ORDER BY register_datetime DESC
-        LIMIT 10
+        SELECT COUNT(*) as cnt
+        FROM users
+        WHERE privileges & 1
+        AND register_datetime > UNIX_TIMESTAMP() - 86400
         """,
     )
     await redis.set(
         "akatsuki:new_registrations_24h",
-        json.dumps(new_users, default=str),
+        str(new_users["cnt"]),
     )
 
     print(f"Updated homepage cache in {time.time() - start_time:.2f} seconds")
@@ -545,7 +533,10 @@ async def main() -> None:
     await freeze_expired_freeze_timers()
     await update_top_plays()
     await update_homepage_cache()
-    # await clear_scores() # disabled as of 2022-07-19
+
+    # NOTE: this cron used to delete scores over
+    # 24 hours old with completed < 3, but it was
+    # disabled as of 2022-07-19.
 
     await disconnect()
 
@@ -554,5 +545,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     uvloop.install()
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    asyncio.run(main())
