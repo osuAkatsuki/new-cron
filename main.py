@@ -485,32 +485,26 @@ async def update_homepage_cache() -> None:
     )
 
     # Simple counts
-    user_count = await db.fetch(
-        """
+    user_count = await db.fetch("""
         SELECT COUNT(*) AS cnt
         FROM users
         WHERE privileges & 1
-        """
-    )
+        """)
     await redis.set("akatsuki:registered_users", str(user_count["cnt"]))
 
-    beatmap_count = await db.fetch(
-        """
+    beatmap_count = await db.fetch("""
         SELECT COUNT(*) AS cnt
         FROM beatmaps
         WHERE ranked IN (2, 3)
-        """
-    )
+        """)
     await redis.set("akatsuki:ranked_beatmaps", str(beatmap_count["cnt"]))
 
-    playtime = await db.fetch(
-        """
+    playtime = await db.fetch("""
         SELECT SUM(playtime) AS total_playtime
         FROM user_stats
         INNER JOIN users ON users.id = user_stats.user_id
         WHERE users.privileges & 1
-        """
-    )
+        """)
     years = int(playtime["total_playtime"]) // (60 * 60 * 24 * 365)
     await redis.set("akatsuki:total_playtime_years", str(years))
 
