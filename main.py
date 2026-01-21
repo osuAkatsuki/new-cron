@@ -490,7 +490,7 @@ async def update_homepage_cache() -> None:
         SELECT COUNT(*) AS cnt
         FROM users
         WHERE privileges & 1
-        """
+        """,
     )
     await redis.set("akatsuki:registered_users", str(user_count["cnt"]))
 
@@ -499,7 +499,7 @@ async def update_homepage_cache() -> None:
         SELECT COUNT(*) AS cnt
         FROM beatmaps
         WHERE ranked IN (2, 3)
-        """
+        """,
     )
     await redis.set("akatsuki:ranked_beatmaps", str(beatmap_count["cnt"]))
 
@@ -509,7 +509,7 @@ async def update_homepage_cache() -> None:
         FROM user_stats
         INNER JOIN users ON users.id = user_stats.user_id
         WHERE users.privileges & 1
-        """
+        """,
     )
     years = int(playtime["total_playtime"]) // (60 * 60 * 24 * 365)
     await redis.set("akatsuki:total_playtime_years", str(years))
