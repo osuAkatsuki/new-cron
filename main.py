@@ -1,20 +1,35 @@
-#!/usr/bin/env python3.9
+#!/usr/bin/env python3
 import asyncio
 import json
 import time
 from datetime import datetime, timezone
 from typing import Any, cast
 
-import redis.asyncio as aioredis
 import uvloop
 from aiohttp import ClientSession
 from cmyui.discord import Embed, Webhook
-from cmyui.mysql import AsyncSQLPool
+from databases import Database
+from redis.asyncio import Redis
 
 import settings
 
-db = AsyncSQLPool()
-redis = aioredis.Redis(
+HTTP_CLIENT = ClientSession()
+
+
+def dsn(*, host: str, port: int, user: str, password: str, db: str) -> str:
+    return f"mysql+asyncmy://{user}:{password}@{host}:{port}/{db}"
+
+
+db = Database(
+    url=dsn(
+        host=settings.DB_HOST,
+        port=settings.DB_PORT,
+        user=settings.DB_USER,
+        password=settings.DB_PASS,
+        db=settings.DB_NAME,
+    ),
+)
+redis = Redis(
     host=settings.REDIS_HOST,
     port=settings.REDIS_PORT,
     username=settings.REDIS_USER,
@@ -42,15 +57,7 @@ def convert_timestamps_to_iso(data: list[dict]) -> list[dict]:
 
 
 async def connect() -> None:
-    await db.connect(
-        {
-            "db": settings.DB_NAME,
-            "host": settings.DB_HOST,
-            "password": settings.DB_PASS,
-            "user": settings.DB_USER,
-            "port": settings.DB_PORT,
-        },
-    )
+    await db.connect()
 
     await redis.initialize()  # type: ignore[unused-awaitable]
     await redis.ping()
@@ -59,8 +66,7 @@ async def connect() -> None:
 
 
 async def disconnect() -> None:
-    await db.close()
-
+    await db.disconnect()
     await redis.aclose()
 
     print("Disconnected from database and redis")
@@ -88,16 +94,16 @@ async def recalc_ranks() -> None:
             modes = ("std",)
 
         for mode in modes:
-            users = await db.fetchall(
+            users = await db.fetch_all(
                 """
                 SELECT users.id, user_stats.pp, user_stats.latest_pp_awarded,
                 users.country, users.latest_activity, users.privileges
                 FROM users
                 LEFT JOIN user_stats on user_stats.user_id = users.id
                 WHERE user_stats.pp > 0
-                AND mode = %s
+                AND mode = :mode
                 """,
-                (STR_TO_INT_MODE[mode] + (rx * 4),),
+                {"mode": STR_TO_INT_MODE[mode] + (rx * 4)},
             )
             users = cast(list[dict[str, Any]], users)
 
@@ -141,43 +147,70 @@ async def fix_supporter_badges() -> None:
     print("Fixing all supporter badges")
 
     start_time = int(time.time())
-    expired_donors = await db.fetchall(
-        "select id, privileges from users where privileges & 4 and donor_expire < %s",
-        (start_time,),
+    expired_donors = await db.fetch_all(
+        """
+        SELECT id, privileges
+        FROM users
+        WHERE privileges & 4
+        AND donor_expire < :start_time
+        """,
+        {"start_time": start_time},
     )
 
     for user in expired_donors:
         premium = user["privileges"] & 8388608
 
         await db.execute(
-            "update users set privileges = privileges - %s where id = %s",
-            (
-                8388612 if premium else 4,
-                user["id"],
-            ),
+            """
+            UPDATE users
+            SET privileges = :new_privileges
+            WHERE id = :user_id
+            """,
+            {
+                "new_privileges": user["privileges"] - (8388612 if premium else 4),
+                "user_id": user["id"],
+            },
         )
 
         await db.execute(
-            "delete from user_badges where badge in (59, 36) and user = %s",
-            (user["id"],),
+            """
+            DELETE FROM user_badges
+            WHERE badge IN (59, 36)
+            AND user = :user_id
+            """,
+            {"user_id": user["id"]},
         )
 
     # wipe any somehow missed badges
     await db.execute(
-        "delete user_badges from user_badges left join users on user_badges.user = users.id where badge in (59, 36) and users.donor_expire < %s",
-        (start_time,),
+        """
+        DELETE user_badges
+        FROM user_badges
+        LEFT JOIN users ON user_badges.user = users.id
+        WHERE badge IN (59, 36)
+        AND users.donor_expire < :start_time
+        """,
+        {"start_time": start_time},
     )
 
     # remove custom badge perms from any expired donors
     await db.execute(
-        "update users set can_custom_badge = 0 where donor_expire < %s",
-        (start_time,),
+        """
+        UPDATE users
+        SET can_custom_badge = 0
+        WHERE donor_expire < :start_time
+        """,
+        {"start_time": start_time},
     )
 
     # now fix missing custom badges
     await db.execute(
-        "update users set can_custom_badge = 1 where donor_expire > %s",
-        (start_time,),
+        """
+        UPDATE users
+        SET can_custom_badge = 1
+        WHERE donor_expire > :start_time
+        """,
+        {"start_time": start_time},
     )
 
     print(f"Fixed all supporter badges in {time.time() - start_time:.2f} seconds")
@@ -189,13 +222,12 @@ async def update_total_submitted_score_counts() -> None:
     start_time = time.time()
 
     # scores
-    row = await db.fetch(
+    row = await db.fetch_one(
         """
         SELECT AUTO_INCREMENT
           FROM INFORMATION_SCHEMA.TABLES
          WHERE TABLE_SCHEMA = 'akatsuki'
            AND TABLE_NAME = 'scores'
-      ORDER BY AUTO_INCREMENT DESC
         """,
     )
     if row is None:
@@ -207,13 +239,12 @@ async def update_total_submitted_score_counts() -> None:
     )
 
     # scores_relax
-    row = await db.fetch(
+    row = await db.fetch_one(
         """
         SELECT AUTO_INCREMENT
           FROM INFORMATION_SCHEMA.TABLES
          WHERE TABLE_SCHEMA = 'akatsuki'
            AND TABLE_NAME = 'scores_relax'
-      ORDER BY AUTO_INCREMENT DESC
         """,
     )
     if row is None:
@@ -225,13 +256,12 @@ async def update_total_submitted_score_counts() -> None:
     )
 
     # scores_ap
-    row = await db.fetch(
+    row = await db.fetch_one(
         """
         SELECT AUTO_INCREMENT
           FROM INFORMATION_SCHEMA.TABLES
          WHERE TABLE_SCHEMA = 'akatsuki'
            AND TABLE_NAME = 'scores_ap'
-      ORDER BY AUTO_INCREMENT DESC
         """,
     )
     if row is None:
@@ -260,8 +290,12 @@ BOARD_MODES = {
 async def freeze_expired_freeze_timers() -> None:
     print("Freezing users with expired freeze timers")
 
-    expired_users = await db.fetchall(
-        "select id, username, privileges, frozen, country from users where frozen != 0 and frozen != 1",
+    expired_users = await db.fetch_all(
+        """
+        SELECT id, username, privileges, frozen, country
+        FROM users
+        WHERE frozen NOT IN (0, 1)
+        """,
     )
 
     start_time = int(time.time())
@@ -272,11 +306,14 @@ async def freeze_expired_freeze_timers() -> None:
             continue
 
         await db.execute(
-            "update users set privileges = %s, frozen = 0, ban_datetime = UNIX_TIMESTAMP() where id = %s",
-            (
-                new_priv,
-                user["id"],
-            ),
+            """
+            UPDATE users
+              SET privileges = %s,
+                  frozen = 0,
+                  ban_datetime = UNIX_TIMESTAMP()
+            WHERE id = %s
+            """,
+            {"new_priv": new_priv, "user_id": user["id"]},
         )
 
         await redis.publish("peppy:ban", user["id"])
@@ -291,8 +328,15 @@ async def freeze_expired_freeze_timers() -> None:
             await pipe.execute()
 
         await db.execute(
-            "insert into rap_logs (id, userid, text, datetime, through) values (null, %s, %s, UNIX_TIMESTAMP(), %s)",
-            (user["id"], FREEZE_MESSAGE, "Aika"),
+            """
+            INSERT INTO rap_logs (id, userid, text, datetime, through)
+                 VALUES (null, :user_id, :text, UNIX_TIMESTAMP(), :through)
+            """,
+            {
+                "user_id": user["id"],
+                "text": FREEZE_MESSAGE,
+                "through": "Aika",
+            },
         )
 
         # post to webhook
@@ -305,8 +349,7 @@ async def freeze_expired_freeze_timers() -> None:
 
         webhook.add_embed(embed)
 
-        async with ClientSession() as session:
-            await webhook.post(session)
+        await webhook.post(HTTP_CLIENT)
 
     print(f"Froze all users in {time.time() - start_time:.2f} seconds")
 
@@ -317,14 +360,14 @@ async def update_hanayo_country_list() -> None:
     print("Updating hanayo country list")
     start_time = int(time.time())
 
-    country_list = await db.fetchall(
+    country_list = await db.fetch_all(
         """
         SELECT country, COUNT(*) AS user_count
           FROM users
           INNER JOIN user_stats ON user_stats.user_id = id
          WHERE LENGTH(country) = 2
             AND country != 'XX'
-            AND PRIVILEGES & 1
+            AND privileges & 1
             AND latest_pp_awarded > (UNIX_TIMESTAMP() - 60 * 24 * 60 * 60)
         GROUP BY country
         """,
@@ -364,7 +407,7 @@ async def update_top_plays() -> None:
              LIMIT 1
             """
 
-        result = await db.fetch(query)
+        result = await db.fetch_one(query)
         async with redis.pipeline() as pipe:
             if not result:
                 await redis.set(f"akatsuki:top:{table}:pp", 0)
@@ -405,7 +448,7 @@ async def update_homepage_cache() -> None:
 
     for combined_mode, rx, play_mode, scores_table, pp_threshold in mode_configs:
         # Recent first places for this mode
-        first_places = await db.fetchall(
+        first_places = await db.fetch_all(
             f"""
             SELECT sf.scoreid, sf.userid, u.username, u.country,
                    b.song_name, b.beatmap_id, b.beatmapset_id,
@@ -415,11 +458,13 @@ async def update_homepage_cache() -> None:
             INNER JOIN users u ON u.id = sf.userid
             INNER JOIN beatmaps b ON b.beatmap_md5 = sf.beatmap_md5
             INNER JOIN {scores_table} s ON s.id = sf.scoreid
-            WHERE sf.rx = %s AND sf.mode = %s AND u.privileges & 1
+            WHERE sf.rx = :rx
+              AND sf.mode = :mode
+              AND u.privileges & 1
             ORDER BY s.time DESC
             LIMIT 10
             """,
-            (rx, play_mode),
+            {"rx": rx, "mode": play_mode},
         )
         # Convert Unix timestamps to ISO format
         first_places = convert_timestamps_to_iso(first_places)
@@ -429,7 +474,7 @@ async def update_homepage_cache() -> None:
         )
 
         # High PP plays for this mode (last 24h)
-        high_pp = await db.fetchall(
+        high_pp = await db.fetch_all(
             f"""
             SELECT s.id, s.userid, ROUND(s.pp) as pp, s.time,
                    u.username, u.country,
@@ -438,13 +483,16 @@ async def update_homepage_cache() -> None:
             FROM {scores_table} s
             INNER JOIN users u ON u.id = s.userid
             INNER JOIN beatmaps b ON b.beatmap_md5 = s.beatmap_md5
-            WHERE s.pp >= %s AND s.completed = 3 AND s.play_mode = %s
+            WHERE s.pp >= :pp_threshold
+              AND s.completed = 3
+              AND s.play_mode = :mode
               AND s.time > UNIX_TIMESTAMP() - 86400
-              AND u.privileges & 1 AND b.ranked IN (2, 3)
+              AND u.privileges & 1
+              AND b.ranked IN (2, 3)
             ORDER BY s.time DESC
             LIMIT 10
             """,
-            (pp_threshold, play_mode),
+            {"pp_threshold": pp_threshold, "mode": play_mode},
         )
         # Convert Unix timestamps to ISO format
         high_pp = convert_timestamps_to_iso(high_pp)
@@ -462,15 +510,24 @@ async def update_homepage_cache() -> None:
         await redis.set("akatsuki:high_pp_plays_24h", vn_std_high_pp)
 
     # Trending beatmaps (most played this week)
-    trending = await db.fetchall(
+    trending = await db.fetch_all(
         """
-        SELECT b.beatmap_id, b.beatmapset_id, b.song_name, COUNT(*) as play_count
+        SELECT b.beatmap_id,
+               b.beatmapset_id,
+               b.song_name,
+               COUNT(*) AS play_count
         FROM (
-            SELECT beatmap_md5 FROM scores WHERE time > UNIX_TIMESTAMP() - 604800
+            SELECT beatmap_md5
+            FROM scores
+            WHERE time > UNIX_TIMESTAMP() - 604800
             UNION ALL
-            SELECT beatmap_md5 FROM scores_relax WHERE time > UNIX_TIMESTAMP() - 604800
+            SELECT beatmap_md5
+            FROM scores_relax
+            WHERE time > UNIX_TIMESTAMP() - 604800
             UNION ALL
-            SELECT beatmap_md5 FROM scores_ap WHERE time > UNIX_TIMESTAMP() - 604800
+            SELECT beatmap_md5
+            FROM scores_ap
+            WHERE time > UNIX_TIMESTAMP() - 604800
         ) recent
         INNER JOIN beatmaps b ON b.beatmap_md5 = recent.beatmap_md5
         WHERE b.ranked IN (2, 3)
@@ -485,7 +542,7 @@ async def update_homepage_cache() -> None:
     )
 
     # Simple counts
-    user_count = await db.fetch(
+    user_count = await db.fetch_one(
         """
         SELECT COUNT(*) AS cnt
         FROM users
@@ -494,7 +551,7 @@ async def update_homepage_cache() -> None:
     )
     await redis.set("akatsuki:registered_users", str(user_count["cnt"]))
 
-    beatmap_count = await db.fetch(
+    beatmap_count = await db.fetch_one(
         """
         SELECT COUNT(*) AS cnt
         FROM beatmaps
@@ -503,7 +560,7 @@ async def update_homepage_cache() -> None:
     )
     await redis.set("akatsuki:ranked_beatmaps", str(beatmap_count["cnt"]))
 
-    playtime = await db.fetch(
+    playtime = await db.fetch_one(
         """
         SELECT SUM(playtime) AS total_playtime
         FROM user_stats
@@ -515,7 +572,7 @@ async def update_homepage_cache() -> None:
     await redis.set("akatsuki:total_playtime_years", str(years))
 
     # New registrations (last 24h)
-    new_users = await db.fetch(
+    new_users = await db.fetch_one(
         """
         SELECT COUNT(*) AS cnt
         FROM users
