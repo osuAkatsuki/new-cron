@@ -49,3 +49,5 @@ jobs:
           script: |
             cd /opt/akatsuki
             docker compose pull new-cron
+            # new-cron runs on a schedule via host crontab, not as a daemon.
+            # Pull-only is sufficient; the next cron invocation uses the new image.
