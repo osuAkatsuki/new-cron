@@ -415,7 +415,7 @@ async def update_homepage_cache() -> None:
             INNER JOIN users u ON u.id = sf.userid
             INNER JOIN beatmaps b ON b.beatmap_md5 = sf.beatmap_md5
             INNER JOIN {scores_table} s ON s.id = sf.scoreid
-            WHERE sf.rx = %s AND sf.mode = %s AND u.privileges & 1
+            WHERE sf.rx = %s AND sf.mode = %s AND (u.privileges & 3) = 3
             ORDER BY s.time DESC
             LIMIT 10
             """,
