@@ -345,7 +345,7 @@ async def update_top_plays() -> None:
     for table, whitelist_int in (
         ("scores", 1),
         ("scores_relax", 2),
-        ("scores_ap", 2),
+        ("scores_ap", 4),
     ):
         query = f"""
             SELECT users.username,
