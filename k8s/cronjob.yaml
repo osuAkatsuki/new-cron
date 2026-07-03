@@ -12,7 +12,7 @@ spec:
         spec:
           containers:
           - name: new-cron-production
-            image: osuakatsuki/new-cron:latest
+            image: ghcr.io/osuakatsuki/new-cron:latest
             imagePullPolicy: Always
             command:
               - ./scripts/bootstrap.sh
