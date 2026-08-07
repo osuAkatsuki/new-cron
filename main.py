@@ -423,10 +423,13 @@ async def update_homepage_cache() -> None:
         )
         # Convert Unix timestamps to ISO format
         first_places = convert_timestamps_to_iso(first_places)
+        first_places_json = json.dumps(first_places, default=str)
         await redis.set(
             f"akatsuki:first_places:{combined_mode}",
-            json.dumps(first_places, default=str),
+            first_places_json,
         )
+        if combined_mode == 0:
+            await redis.set("akatsuki:recent_first_places", first_places_json)
 
         # High PP plays for this mode (last 24h)
         high_pp = await db.fetchall(
@@ -448,41 +451,36 @@ async def update_homepage_cache() -> None:
         )
         # Convert Unix timestamps to ISO format
         high_pp = convert_timestamps_to_iso(high_pp)
+        high_pp_json = json.dumps(high_pp, default=str)
         await redis.set(
             f"akatsuki:high_pp:{combined_mode}",
-            json.dumps(high_pp, default=str),
+            high_pp_json,
         )
+        if combined_mode == 0:
+            await redis.set("akatsuki:high_pp_plays_24h", high_pp_json)
 
-    # Default keys (vn std - mode 0) for initial page load via templates
-    vn_std_first_places = await redis.get("akatsuki:first_places:0")
-    vn_std_high_pp = await redis.get("akatsuki:high_pp:0")
-    if vn_std_first_places:
-        await redis.set("akatsuki:recent_first_places", vn_std_first_places)
-    if vn_std_high_pp:
-        await redis.set("akatsuki:high_pp_plays_24h", vn_std_high_pp)
-
-    # Trending beatmaps (most played this week)
-    trending = await db.fetchall(
-        """
-        SELECT b.beatmap_id, b.beatmapset_id, b.song_name, COUNT(*) as play_count
-        FROM (
-            SELECT beatmap_md5 FROM scores WHERE time > UNIX_TIMESTAMP() - 604800
-            UNION ALL
-            SELECT beatmap_md5 FROM scores_relax WHERE time > UNIX_TIMESTAMP() - 604800
-            UNION ALL
-            SELECT beatmap_md5 FROM scores_ap WHERE time > UNIX_TIMESTAMP() - 604800
-        ) recent
-        INNER JOIN beatmaps b ON b.beatmap_md5 = recent.beatmap_md5
-        WHERE b.ranked IN (2, 3)
-        GROUP BY b.beatmap_id
-        ORDER BY play_count DESC
-        LIMIT 10
-        """,
-    )
-    await redis.set(
-        "akatsuki:trending_beatmaps",
-        json.dumps(trending, default=str),
-    )
+        # Trending beatmaps for this mode (most played this week)
+        trending = await db.fetchall(
+            f"""
+            SELECT b.beatmap_id, b.beatmapset_id, b.song_name, COUNT(*) as play_count
+            FROM {scores_table} s
+            INNER JOIN beatmaps b ON b.beatmap_md5 = s.beatmap_md5
+            WHERE s.play_mode = %s
+              AND s.time > UNIX_TIMESTAMP() - 604800
+              AND b.ranked IN (2, 3)
+            GROUP BY b.beatmap_id
+            ORDER BY play_count DESC
+            LIMIT 10
+            """,
+            (play_mode,),
+        )
+        trending_json = json.dumps(trending, default=str)
+        await redis.set(
+            f"akatsuki:trending_beatmaps:{combined_mode}",
+            trending_json,
+        )
+        if combined_mode == 0:
+            await redis.set("akatsuki:trending_beatmaps", trending_json)
 
     # Simple counts
     user_count = await db.fetch(
