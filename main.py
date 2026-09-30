@@ -189,33 +189,38 @@ async def fix_user_titles() -> None:
     start_time = time.time()
 
     # Match getEligibleTitles in akatsuki-api/app/v1/self.go.
-    # NULL falls back to the current default; an empty string means "No title".
+    # Preserve literal custom titles; NULL uses the current eligible default.
     await db.execute(
         """
         update users
            set user_title = null
          where user_title is not null
            and user_title != ''
-           and not case user_title
+           and not case cast(user_title as binary)
                when 'bot' then exists (
                    select 1 from user_badges ub
                    inner join badges b on ub.badge = b.id
                    where ub.user = users.id and b.id = 34
                )
-               when 'product_manager' then (privileges & 9437183) = 9437183
-               when 'developer' then (privileges & 10743327) = 10743327
+               when 'product_manager' then
+                   ((privileges | 8388612) & 9437183) = 9437183
+               when 'developer' then
+                   ((privileges | 8388612) & 10743327) = 10743327
                when 'designer' then exists (
                    select 1 from user_badges ub
                    inner join badges b on ub.badge = b.id
                    where ub.user = users.id and b.id = 101
                )
-               when 'community_manager' then (privileges & 9425151) = 9425151
+               when 'community_manager' then
+                   ((privileges | 8388612) & 9425151) = 9425151
                when 'community_support' then
-                   (privileges & 9212159) = 9212159
-                   or (privileges & 9175111) = 9175111
-               when 'event_manager' then (privileges & 10485767) = 10485767
+                   ((privileges | 8388612) & 9212159) = 9212159
+                   or ((privileges | 8388612) & 9175111) = 9175111
+               when 'event_manager' then
+                   ((privileges | 8388612) & 10485767) = 10485767
                when 'nqa' then (privileges & 33554432) = 33554432
-               when 'nominator' then (privileges & 8388871) = 8388871
+               when 'nominator' then
+                   ((privileges | 8388612) & 8388871) = 8388871
                when 'scorewatcher' then exists (
                    select 1 from user_badges ub
                    inner join badges b on ub.badge = b.id
@@ -228,7 +233,7 @@ async def fix_user_titles() -> None:
                )
                when 'premium' then (privileges & 8388608) = 8388608
                when 'donor' then (privileges & 4) = 4
-               else 0
+               else 1
            end
         """,
     )
