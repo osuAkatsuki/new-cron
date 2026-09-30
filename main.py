@@ -180,6 +180,16 @@ async def fix_supporter_badges() -> None:
         (start_time,),
     )
 
+    # Let expired title selections fall back to the user's current eligible title.
+    await db.execute(
+        """
+        update users
+           set user_title = null
+         where (user_title = 'premium' and (privileges & 8388608) = 0)
+            or (user_title = 'donor' and (privileges & 4) = 0)
+        """,
+    )
+
     print(f"Fixed all supporter badges in {time.time() - start_time:.2f} seconds")
 
 
