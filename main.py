@@ -183,6 +183,64 @@ async def fix_supporter_badges() -> None:
     print(f"Fixed all supporter badges in {time.time() - start_time:.2f} seconds")
 
 
+async def fix_user_titles() -> None:
+    print("Fixing all user titles")
+
+    start_time = time.time()
+
+    # Match getEligibleTitles in akatsuki-api/app/v1/self.go.
+    # Preserve literal custom titles; NULL uses the current eligible default.
+    await db.execute(
+        """
+        update users
+           set user_title = null
+         where user_title is not null
+           and user_title != ''
+           and not case cast(user_title as binary)
+               when 'bot' then exists (
+                   select 1 from user_badges ub
+                   inner join badges b on ub.badge = b.id
+                   where ub.user = users.id and b.id = 34
+               )
+               when 'product_manager' then
+                   ((privileges | 8388612) & 9437183) = 9437183
+               when 'developer' then
+                   ((privileges | 8388612) & 10743327) = 10743327
+               when 'designer' then exists (
+                   select 1 from user_badges ub
+                   inner join badges b on ub.badge = b.id
+                   where ub.user = users.id and b.id = 101
+               )
+               when 'community_manager' then
+                   ((privileges | 8388612) & 9425151) = 9425151
+               when 'community_support' then
+                   ((privileges | 8388612) & 9212159) = 9212159
+                   or ((privileges | 8388612) & 9175111) = 9175111
+               when 'event_manager' then
+                   ((privileges | 8388612) & 10485767) = 10485767
+               when 'nqa' then (privileges & 33554432) = 33554432
+               when 'nominator' then
+                   ((privileges | 8388612) & 8388871) = 8388871
+               when 'scorewatcher' then exists (
+                   select 1 from user_badges ub
+                   inner join badges b on ub.badge = b.id
+                   where ub.user = users.id and b.id = 86
+               )
+               when 'champion' then exists (
+                   select 1 from user_badges ub
+                   inner join badges b on ub.badge = b.id
+                   where ub.user = users.id and b.id = 67
+               )
+               when 'premium' then (privileges & 8388608) = 8388608
+               when 'donor' then (privileges & 4) = 4
+               else 1
+           end
+        """,
+    )
+
+    print(f"Fixed all user titles in {time.time() - start_time:.2f} seconds")
+
+
 async def update_total_submitted_score_counts() -> None:
     print("Updating total submitted score counts")
 
@@ -543,6 +601,7 @@ async def main() -> None:
     await fix_supporter_badges()
     await update_total_submitted_score_counts()
     await freeze_expired_freeze_timers()
+    await fix_user_titles()
     await update_top_plays()
     await update_homepage_cache()
 
