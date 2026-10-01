@@ -188,6 +188,11 @@ async def fix_user_titles() -> None:
 
     start_time = time.time()
 
+    # Normalize legacy supporter selections before checking current eligibility.
+    await db.execute(
+        "update users set user_title = 'premium' where cast(user_title as binary) = 'donor'",
+    )
+
     # Match getEligibleTitles in akatsuki-api/app/v1/self.go.
     # Preserve literal custom titles; NULL uses the current eligible default.
     await db.execute(
@@ -232,7 +237,6 @@ async def fix_user_titles() -> None:
                    where ub.user = users.id and b.id = 67
                )
                when 'premium' then (privileges & 8388608) = 8388608
-               when 'donor' then (privileges & 4) = 4
                else 1
            end
         """,
