@@ -141,42 +141,18 @@ async def fix_supporter_badges() -> None:
     print("Fixing all supporter badges")
 
     start_time = int(time.time())
-    expired_donors = await db.fetchall(
-        "select id, privileges from users where privileges & 4 and donor_expire < %s",
+    await db.execute(
+        "update users set privileges = privileges & ~8388612 where privileges & 8388612 and donor_expire <= %s",
         (start_time,),
     )
 
-    for user in expired_donors:
-        premium = user["privileges"] & 8388608
-
-        await db.execute(
-            "update users set privileges = privileges - %s where id = %s",
-            (
-                8388612 if premium else 4,
-                user["id"],
-            ),
-        )
-
-        await db.execute(
-            "delete from user_badges where badge in (59, 36) and user = %s",
-            (user["id"],),
-        )
-
-    # wipe any somehow missed badges
     await db.execute(
-        "delete user_badges from user_badges left join users on user_badges.user = users.id where badge in (59, 36) and users.donor_expire < %s",
+        "delete user_badges from user_badges inner join users on user_badges.user = users.id where badge in (59, 36) and (users.donor_expire <= %s or (users.privileges & 8388612) != 8388612)",
         (start_time,),
     )
 
-    # remove custom badge perms from any expired donors
     await db.execute(
-        "update users set can_custom_badge = 0 where donor_expire < %s",
-        (start_time,),
-    )
-
-    # now fix missing custom badges
-    await db.execute(
-        "update users set can_custom_badge = 1 where donor_expire > %s",
+        "update users set can_custom_badge = ((privileges & 8388612) = 8388612 and donor_expire > %s)",
         (start_time,),
     )
 
