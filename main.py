@@ -12,6 +12,7 @@ from cmyui.discord import Embed, Webhook
 from cmyui.mysql import AsyncSQLPool
 
 import settings
+from trending import most_played_beatmaps, most_played_standard_beatmaps
 
 db = AsyncSQLPool()
 redis = aioredis.Redis(
@@ -499,27 +500,43 @@ async def update_homepage_cache() -> None:
     if vn_std_high_pp:
         await redis.set("akatsuki:high_pp_plays_24h", vn_std_high_pp)
 
-    # Trending beatmaps (most played this week)
-    trending = await db.fetchall(
-        """
-        SELECT b.beatmap_id, b.beatmapset_id, b.song_name, COUNT(*) as play_count
-        FROM (
-            SELECT beatmap_md5 FROM scores WHERE time > UNIX_TIMESTAMP() - 604800
-            UNION ALL
-            SELECT beatmap_md5 FROM scores_relax WHERE time > UNIX_TIMESTAMP() - 604800
-            UNION ALL
-            SELECT beatmap_md5 FROM scores_ap WHERE time > UNIX_TIMESTAMP() - 604800
-        ) recent
-        INNER JOIN beatmaps b ON b.beatmap_md5 = recent.beatmap_md5
-        WHERE b.ranked IN (2, 3)
-        GROUP BY b.beatmap_id
-        ORDER BY play_count DESC
-        LIMIT 10
-        """,
-    )
+    # Trending beatmaps (most played this week), from one scan of each
+    # scores table: plays per ranked or approved beatmap and play mode.
+    # `time` has no index, so every row is read either way: USE INDEX ()
+    # keeps that a table scan, instead of a walk of the (beatmap_md5,
+    # play_mode) index that looks up each row's time separately.
+    all_plays: list[dict[str, Any]] = []
+    for combined_mode, scores_table in (
+        (0, "scores"),  # vn
+        (4, "scores_relax"),  # rx
+        (8, "scores_ap"),  # ap
+    ):
+        plays = await db.fetchall(
+            f"""
+            SELECT b.beatmap_id, b.beatmapset_id, b.beatmap_md5, b.song_name,
+                   recent.play_mode, recent.play_count
+            FROM (
+                SELECT beatmap_md5, play_mode, COUNT(*) AS play_count
+                FROM {scores_table} USE INDEX ()
+                WHERE time > UNIX_TIMESTAMP() - 604800
+                GROUP BY beatmap_md5, play_mode
+            ) recent
+            INNER JOIN beatmaps b ON b.beatmap_md5 = recent.beatmap_md5
+            WHERE b.ranked IN (2, 3)
+            """,
+        )
+        all_plays.extend(plays)
+
+        # This leaderboard, osu!standard only
+        await redis.set(
+            f"akatsuki:trending_beatmaps:{combined_mode}",
+            json.dumps(most_played_standard_beatmaps(plays), default=str),
+        )
+
+    # Every leaderboard and play mode together
     await redis.set(
         "akatsuki:trending_beatmaps",
-        json.dumps(trending, default=str),
+        json.dumps(most_played_beatmaps(all_plays), default=str),
     )
 
     # Simple counts
